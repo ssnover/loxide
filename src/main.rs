@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{stdout, BufReader, Read, Write},
+    io::{BufReader, Read, Write},
     path::Path,
 };
 
@@ -63,10 +63,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_repl() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = std::io::stdin();
     let mut input_line = String::new();
-    let mut interpreter = Interpreter::new();
+    let mut stdout = std::io::stdout();
+    let mut interpreter = Interpreter::new(&mut stdout);
     loop {
         print!("> ");
-        stdout().flush()?;
+        let _ = std::io::stdout().flush();
         let Ok(_) = stdin.read_line(&mut input_line) else {
             break;
         };
@@ -78,7 +79,6 @@ fn run_repl() -> Result<(), Box<dyn std::error::Error>> {
                             interpreter.interpret(&program)?;
                         }
                         Err(errs) => {
-                            eprintln!("Failed to parse");
                             for err in errs {
                                 eprintln!("{err}");
                             }
@@ -103,19 +103,8 @@ fn run_script(path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> 
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
-    if let Err(errs) = loxide::scanning::scan_tokens(&contents)
-        .map_err(|errs| errs.into_iter().map(Error::from).collect::<Vec<_>>())
-        .and_then(|tokens| {
-            loxide::parsing::parse(&tokens)
-                .map_err(|errs| errs.into_iter().map(Error::from).collect::<Vec<_>>())
-                .and_then(|program| {
-                    let mut interpreter = Interpreter::new();
-                    interpreter
-                        .interpret(&program)
-                        .map_err(|err| vec![Error::from(err)])
-                })
-        })
-    {
+    let mut stdout = std::io::stdout();
+    if let Err(errs) = loxide::interpret_src(&contents, &mut stdout) {
         for err in errs {
             eprintln!("{err}");
         }

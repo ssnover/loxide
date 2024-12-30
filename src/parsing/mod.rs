@@ -34,7 +34,6 @@ pub fn parse(tokens: &[Token]) -> Result<Vec<Statement>, Vec<Error>> {
                 statements.push(stmt);
             }
             Err(err) => {
-                eprintln!("{err}");
                 errors.push(err);
                 let forwarded = synchronize(&tokens[consumed..]);
                 if forwarded == 0 {

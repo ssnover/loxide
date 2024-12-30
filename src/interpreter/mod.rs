@@ -3,6 +3,7 @@ use crate::ast::ObjectValue;
 mod environment;
 pub mod expression;
 pub mod interpreter;
+pub use interpreter::Interpreter;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {

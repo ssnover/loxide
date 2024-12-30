@@ -1,16 +1,20 @@
 use super::{environment::Environment, expression::evaluate, Error, Object};
 use crate::ast::Statement;
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{cell::RefCell, collections::VecDeque, io::Write, rc::Rc};
 
-pub struct Interpreter {
+pub struct Interpreter<'a, W> {
     scoped_envs: VecDeque<Rc<RefCell<Environment>>>,
+    print_writer: &'a mut W,
 }
 
-impl Interpreter {
-    pub fn new() -> Interpreter {
+impl<'a, W: Write> Interpreter<'a, W> {
+    pub fn new(writer: &'a mut W) -> Interpreter<'a, W> {
         let mut envs = VecDeque::new();
         envs.push_back(Rc::new(RefCell::new(Environment::new())));
-        Interpreter { scoped_envs: envs }
+        Interpreter {
+            scoped_envs: envs,
+            print_writer: writer,
+        }
     }
 
     pub fn interpret(&mut self, program: &[Statement]) -> Result<(), Error> {
@@ -28,7 +32,7 @@ impl Interpreter {
             }
             Statement::Print(expr) => {
                 let value = evaluate(expr, &mut self.scoped_envs.back().unwrap().borrow_mut())?;
-                println!("{value}");
+                let _ = writeln!(&mut self.print_writer, "{value}");
                 Ok(())
             }
             Statement::VarDeclaration((name, initializer)) => {
@@ -69,7 +73,8 @@ mod test {
 
     #[test]
     fn test_var_declaration() {
-        let mut interpreter = Interpreter::new();
+        let mut stdout = std::io::stdout();
+        let mut interpreter = Interpreter::new(&mut stdout);
         let stmt = Statement::VarDeclaration((String::from("value"), None));
         interpreter.execute(&stmt).unwrap();
         assert_eq!(

@@ -62,7 +62,7 @@ fn parse_expr_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> {
         Err(Error {
             span: Span::new(
                 tokens.get(0).unwrap().span.start,
-                tokens.get(consumed).unwrap().span.end,
+                tokens.get(consumed - 1).unwrap().span.end,
             ),
             err: String::from("Expected ';' after value."),
         })
