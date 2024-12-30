@@ -80,6 +80,16 @@ fn synchronize(tokens: &[Token]) -> usize {
     tokens.len()
 }
 
+#[macro_export]
+macro_rules! token_matches {
+    ($expr:expr, $kind:path) => {
+        match $expr {
+            Some(Token { kind: $kind, .. }) => true,
+            _ => false,
+        }
+    };
+}
+
 #[cfg(test)]
 mod test {
     use crate::ast::{Expression, ObjectValue};

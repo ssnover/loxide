@@ -61,6 +61,19 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 self.scoped_envs.pop_back();
                 result
             }
+            Statement::If(stmt) => {
+                let condition_result = evaluate(
+                    &stmt.condition,
+                    &mut self.scoped_envs.back().unwrap().borrow_mut(),
+                )?;
+                if condition_result.is_truthy() {
+                    self.execute(&stmt.then_branch)
+                } else if let Some(else_branch) = &stmt.else_branch {
+                    self.execute(else_branch)
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 }

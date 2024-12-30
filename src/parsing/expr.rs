@@ -4,7 +4,7 @@ use crate::{
         BinaryExpr, BinaryOperator, Expression, ObjectValue, UnaryExpr, UnaryOperator, Variable,
     },
     scanning::{Token, TokenKind},
-    Span,
+    token_matches, Span,
 };
 
 pub fn parse_expr(tokens: &[Token]) -> Result<(usize, Expression), Error> {
@@ -14,11 +14,7 @@ pub fn parse_expr(tokens: &[Token]) -> Result<(usize, Expression), Error> {
 fn parse_assignment(tokens: &[Token]) -> Result<(usize, Expression), Error> {
     let (expr_consumed, expr) = parse_equality(tokens)?;
 
-    if let Some(Token {
-        kind: TokenKind::Equals,
-        ..
-    }) = tokens.get(expr_consumed)
-    {
+    if token_matches!(tokens.get(expr_consumed), TokenKind::Equals) {
         let mut consumed = expr_consumed + 1;
         let (inner_consumed, value) = parse_assignment(&tokens[consumed..])?;
         consumed += inner_consumed;

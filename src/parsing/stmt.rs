@@ -1,16 +1,12 @@
 use super::{expr::parse_expr, Error};
 use crate::{
-    ast::Statement,
+    ast::{IfStatement, Statement},
     scanning::{Token, TokenKind},
-    Span,
+    token_matches, Span,
 };
 
 pub fn parse_declaration(tokens: &[Token]) -> Result<(usize, Statement), Error> {
-    if let Some(Token {
-        kind: TokenKind::Var,
-        ..
-    }) = tokens.get(0)
-    {
+    if token_matches!(tokens.get(0), TokenKind::Var) {
         parse_var_declaration(tokens)
     } else {
         parse_statement(tokens)
@@ -18,26 +14,17 @@ pub fn parse_declaration(tokens: &[Token]) -> Result<(usize, Statement), Error> 
 }
 
 pub fn parse_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> {
-    match tokens.get(0) {
-        Some(Token {
-            kind: TokenKind::Print,
-            ..
-        }) => parse_print_statement(tokens),
-        Some(Token {
-            kind: TokenKind::LeftBrace,
-            ..
-        }) => parse_block(tokens),
+    match tokens.get(0).map(|token| &token.kind) {
+        Some(TokenKind::Print) => parse_print_statement(tokens),
+        Some(TokenKind::LeftBrace) => parse_block(tokens),
+        Some(TokenKind::If) => parse_if(tokens),
         _ => parse_expr_statement(tokens),
     }
 }
 
 fn parse_print_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> {
     let (consumed, expr) = parse_expr(&tokens[1..])?;
-    if let Some(Token {
-        kind: TokenKind::Semicolon,
-        ..
-    }) = tokens.get(consumed + 1)
-    {
+    if token_matches!(tokens.get(consumed + 1), TokenKind::Semicolon) {
         Ok((consumed + 2, Statement::Print(expr)))
     } else {
         Err(Error {
@@ -52,11 +39,7 @@ fn parse_print_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> 
 
 fn parse_expr_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> {
     let (consumed, expr) = parse_expr(tokens)?;
-    if let Some(Token {
-        kind: TokenKind::Semicolon,
-        ..
-    }) = tokens.get(consumed)
-    {
+    if token_matches!(tokens.get(consumed), TokenKind::Semicolon) {
         Ok((consumed + 1, Statement::Expression(expr)))
     } else {
         Err(Error {
@@ -74,11 +57,7 @@ fn parse_block(tokens: &[Token]) -> Result<(usize, Statement), Error> {
     let mut stmts = vec![];
 
     while consumed < tokens.len() {
-        if let Some(Token {
-            kind: TokenKind::RightBrace,
-            ..
-        }) = tokens.get(consumed)
-        {
+        if token_matches!(tokens.get(consumed), TokenKind::RightBrace) {
             break;
         }
         let (decl_consumed, stmt) = parse_declaration(&tokens[consumed..])?;
@@ -86,11 +65,7 @@ fn parse_block(tokens: &[Token]) -> Result<(usize, Statement), Error> {
         consumed += decl_consumed;
     }
 
-    if let Some(Token {
-        kind: TokenKind::RightBrace,
-        ..
-    }) = tokens.get(consumed)
-    {
+    if token_matches!(tokens.get(consumed), TokenKind::RightBrace) {
         consumed += 1;
         Ok((consumed, Statement::Block(stmts)))
     } else {
@@ -101,6 +76,52 @@ fn parse_block(tokens: &[Token]) -> Result<(usize, Statement), Error> {
     }
 }
 
+fn parse_if(tokens: &[Token]) -> Result<(usize, Statement), Error> {
+    let mut consumed = 1;
+    if !token_matches!(tokens.get(consumed), TokenKind::LeftParen) {
+        return Err(Error {
+            span: tokens.get(0).unwrap().span.clone(),
+            err: String::from("Expected '(' after if condition"),
+        });
+    }
+    consumed += 1;
+
+    let (expr_consumed, expr) = parse_expr(&tokens[consumed..])?;
+    consumed += expr_consumed;
+
+    if !token_matches!(tokens.get(consumed), TokenKind::RightParen) {
+        return Err(Error {
+            span: Span::bounding(
+                &tokens.get(0).unwrap().span,
+                &tokens.get(consumed - 1).unwrap().span,
+            ),
+            err: String::from("Expected ')' after if condition"),
+        });
+    }
+    consumed += 1;
+
+    let (stmt_consumed, then_branch) = parse_statement(&tokens[consumed..])?;
+    consumed += stmt_consumed;
+
+    let else_branch = if token_matches!(tokens.get(consumed), TokenKind::Else) {
+        consumed += 1;
+        let (else_consumed, else_branch) = parse_statement(&tokens[consumed..])?;
+        consumed += else_consumed;
+        Some(else_branch)
+    } else {
+        None
+    };
+
+    Ok((
+        consumed,
+        Statement::If(Box::new(IfStatement {
+            condition: expr,
+            then_branch,
+            else_branch,
+        })),
+    ))
+}
+
 fn parse_var_declaration(tokens: &[Token]) -> Result<(usize, Statement), Error> {
     let mut consumed = 1;
     if let Some(Token {
@@ -109,11 +130,7 @@ fn parse_var_declaration(tokens: &[Token]) -> Result<(usize, Statement), Error> 
     }) = tokens.get(consumed)
     {
         consumed += 1;
-        let initializer = if let Some(Token {
-            kind: TokenKind::Equals,
-            ..
-        }) = tokens.get(consumed)
-        {
+        let initializer = if token_matches!(tokens.get(consumed), TokenKind::Equals) {
             consumed += 1;
             let (expr_consumed, expr) = parse_expr(&tokens[consumed..])?;
             consumed += expr_consumed;
@@ -122,11 +139,7 @@ fn parse_var_declaration(tokens: &[Token]) -> Result<(usize, Statement), Error> 
             None
         };
 
-        if let Some(Token {
-            kind: TokenKind::Semicolon,
-            ..
-        }) = tokens.get(consumed)
-        {
+        if token_matches!(tokens.get(consumed), TokenKind::Semicolon) {
             consumed += 1;
             Ok((
                 consumed,

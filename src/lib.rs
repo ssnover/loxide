@@ -114,14 +114,24 @@ pub fn interpret_src<W: std::io::Write>(src: &str, writer: &mut W) -> Result<(),
 mod test {
     use super::*;
 
+    fn run_script_and_assert_output(input: &str, output: &str) {
+        let output_str = vec![];
+        let mut writer = std::io::BufWriter::new(output_str);
+        interpret_src(input, &mut writer).unwrap();
+        assert_eq!(output.as_bytes(), writer.buffer())
+    }
+
     #[test]
     fn test_variable_scoping() {
         let input_src = include_str!("../test_scripts/variable_scoping.lox");
         let output_txt = include_str!("../test_scripts/variable_scoping.out");
+        run_script_and_assert_output(input_src, output_txt);
+    }
 
-        let output_str = vec![];
-        let mut writer = std::io::BufWriter::new(output_str);
-        interpret_src(input_src, &mut writer).unwrap();
-        assert_eq!(output_txt.as_bytes(), writer.buffer())
+    #[test]
+    fn test_conditions() {
+        let input_src = include_str!("../test_scripts/conditions.lox");
+        let output_txt = include_str!("../test_scripts/conditions.out");
+        run_script_and_assert_output(input_src, output_txt);
     }
 }
