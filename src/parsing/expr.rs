@@ -1,46 +1,10 @@
+use super::Error;
 use crate::{
     ast::{BinaryExpr, BinaryOperator, Expression, ObjectValue, UnaryExpr, UnaryOperator},
     scanning::{Token, TokenKind},
-    Span,
 };
 
-#[derive(Debug, Clone)]
-pub struct Error {
-    span: Span,
-    err: String,
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.err.fmt(f)
-    }
-}
-
-impl std::error::Error for Error {
-    fn cause(&self) -> Option<&dyn std::error::Error> {
-        None
-    }
-
-    fn description(&self) -> &str {
-        &self.err
-    }
-
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
-
-pub fn parse(tokens: &[Token]) -> Option<Expression> {
-    match parse_expr(tokens) {
-        Ok((_, expr)) => Some(expr),
-        Err(_err) => {
-            // todo: Synchronize here
-            None
-        }
-    }
-}
-
-fn parse_expr(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+pub fn parse_expr(tokens: &[Token]) -> Result<(usize, Expression), Error> {
     parse_equality(tokens)
 }
 
@@ -189,93 +153,5 @@ fn parse_primary(tokens: &[Token]) -> Result<(usize, Expression), Error> {
             err: format!("Expected expression, but reached end of token stream"),
             span: Default::default(),
         }),
-    }
-}
-
-fn synchronize(tokens: &[Token]) -> Option<usize> {
-    let mut consumed = 0;
-    let mut tokens = tokens.iter().peekable();
-    while let Some(token) = tokens.next() {
-        if matches!(token.kind, TokenKind::Semicolon) {
-            return Some(consumed);
-        }
-        if matches!(
-            tokens.peek().map(|token| &token.kind),
-            Some(
-                TokenKind::Class
-                    | TokenKind::Fun
-                    | TokenKind::Var
-                    | TokenKind::For
-                    | TokenKind::If
-                    | TokenKind::While
-                    | TokenKind::Print
-                    | TokenKind::Return
-            )
-        ) {
-            return Some(consumed);
-        }
-        consumed += 1;
-    }
-
-    None
-}
-
-#[cfg(test)]
-mod test {
-    use crate::Span;
-
-    use super::*;
-
-    fn token_sans_context(kind: TokenKind) -> Token {
-        Token {
-            kind,
-            span: Span::default(),
-        }
-    }
-
-    #[test]
-    fn test_arithmetic_precedence() {
-        let tokens = [
-            TokenKind::Number(6.),
-            TokenKind::Slash,
-            TokenKind::Number(3.),
-            TokenKind::Minus,
-            TokenKind::Number(1.),
-        ]
-        .into_iter()
-        .map(token_sans_context)
-        .collect::<Vec<_>>();
-
-        let expr = parse(&tokens).unwrap();
-        let Expression::Binary(expr) = expr else {
-            panic!("Expect binary expression, got {expr:?} instead");
-        };
-        assert!(matches!(
-            expr.right,
-            Expression::Literal(ObjectValue::Number(1.))
-        ));
-        assert!(matches!(expr.operator, BinaryOperator::Subtraction));
-        let Expression::Binary(expr) = expr.left else {
-            panic!("Expected binary expression, got {expr:?} instead");
-        };
-        assert!(matches!(
-            expr.right,
-            Expression::Literal(ObjectValue::Number(3.))
-        ));
-        assert!(matches!(expr.operator, BinaryOperator::Division));
-        assert!(matches!(
-            expr.left,
-            Expression::Literal(ObjectValue::Number(6.))
-        ));
-    }
-
-    #[test]
-    fn test_invalid_unary() {
-        let tokens = [TokenKind::Star, TokenKind::Number(1.)]
-            .into_iter()
-            .map(token_sans_context)
-            .collect::<Vec<_>>();
-
-        assert!(parse(&tokens).is_none());
     }
 }

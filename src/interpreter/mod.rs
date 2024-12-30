@@ -1,6 +1,7 @@
 use crate::ast::ObjectValue;
 
 pub mod expression;
+pub mod interpreter;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {
@@ -53,7 +54,14 @@ impl Object {
             (Object::Nil, Object::Nil) => Ok(true),
             (Object::Boolean(lhs), Object::Boolean(rhs)) => Ok(lhs == rhs),
             (Object::String(lhs), Object::String(rhs)) => Ok(lhs == rhs),
-            (Object::Number(lhs), Object::Number(rhs)) => Ok(lhs == rhs),
+            (Object::Number(lhs), Object::Number(rhs)) => {
+                if lhs.is_nan() && rhs.is_nan() {
+                    Ok(true)
+                } else {
+                    Ok(lhs == rhs)
+                }
+            }
+            (Object::Nil, _) => Ok(false),
             _ => Err(Error {
                 kind: ErrorKind::TypeError,
             }),
@@ -167,3 +175,11 @@ pub enum ErrorKind {
 pub struct Error {
     kind: ErrorKind,
 }
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Encountered error {:?}", self.kind)
+    }
+}
+
+impl std::error::Error for Error {}

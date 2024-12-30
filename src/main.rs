@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use loxide::scanning::Token;
+use loxide::{interpreter::interpreter::Interpreter, scanning::Token};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args();
@@ -33,16 +33,9 @@ fn run_repl() -> Result<(), Box<dyn std::error::Error>> {
             Ok(tokens) => {
                 if !tokens.is_empty() {
                     match loxide::parsing::parse(&tokens) {
-                        Some(expr) => {
-                            let result = loxide::interpreter::expression::evaluate(&expr);
-                            match result {
-                                Ok(result) => {
-                                    println!("{result}")
-                                }
-                                Err(err) => {
-                                    eprintln!("Failed to evaluate: {err:?}")
-                                }
-                            }
+                        Some(program) => {
+                            let interpreter = Interpreter::new();
+                            interpreter.interpret(&program)?;
                         }
                         None => {
                             eprintln!("Failed to parse");
