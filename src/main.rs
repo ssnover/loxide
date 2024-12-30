@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufReader, Read},
+    io::{stdout, BufReader, Read, Write},
     path::Path,
 };
 
@@ -23,12 +23,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_repl() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = std::io::stdin();
     let mut input_line = String::new();
-    while let Ok(_) = stdin.read_line(&mut input_line) {
+    loop {
         print!("> ");
+        stdout().flush()?;
+        let Ok(_) = stdin.read_line(&mut input_line) else {
+            break;
+        };
         match loxide::scanning::scan_tokens(&input_line) {
             Ok(tokens) => {
                 if !tokens.is_empty() {
-                    println!("{tokens:?}");
+                    match loxide::parsing::parse(&tokens) {
+                        Some(expr) => {
+                            let result = loxide::interpreter::expression::evaluate(&expr);
+                            match result {
+                                Ok(result) => {
+                                    println!("{result}")
+                                }
+                                Err(err) => {
+                                    eprintln!("Failed to evaluate: {err:?}")
+                                }
+                            }
+                        }
+                        None => {
+                            eprintln!("Failed to parse");
+                        }
+                    }
                 }
             }
             Err(errs) => {

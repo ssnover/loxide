@@ -1,12 +1,12 @@
 use crate::{
     ast::{BinaryExpr, BinaryOperator, Expression, ObjectValue, UnaryExpr, UnaryOperator},
     scanning::{Token, TokenKind},
+    Span,
 };
 
 #[derive(Debug, Clone)]
 pub struct Error {
-    start_span: (usize, usize),
-    end_span: Option<(usize, usize)>,
+    span: Span,
     err: String,
 }
 
@@ -174,8 +174,7 @@ fn parse_primary(tokens: &[Token]) -> Result<(usize, Expression), Error> {
                 let left_paren = tokens.get(0).unwrap();
                 Err(Error {
                     err: format!("Unmatched left parenthesis, expected ')' after expression"),
-                    start_span: left_paren.start_span,
-                    end_span: None,
+                    span: left_paren.span.clone(),
                 })
             }
         }
@@ -183,27 +182,54 @@ fn parse_primary(tokens: &[Token]) -> Result<(usize, Expression), Error> {
             let token = tokens.get(0).unwrap();
             Err(Error {
                 err: format!("Expected literal, got unexpected token: {token:?}"),
-                start_span: token.start_span,
-                end_span: Some(token.end_span),
+                span: token.span.clone(),
             })
         }
         None => Err(Error {
             err: format!("Expected expression, but reached end of token stream"),
-            start_span: Default::default(),
-            end_span: None,
+            span: Default::default(),
         }),
     }
 }
 
+fn synchronize(tokens: &[Token]) -> Option<usize> {
+    let mut consumed = 0;
+    let mut tokens = tokens.iter().peekable();
+    while let Some(token) = tokens.next() {
+        if matches!(token.kind, TokenKind::Semicolon) {
+            return Some(consumed);
+        }
+        if matches!(
+            tokens.peek().map(|token| &token.kind),
+            Some(
+                TokenKind::Class
+                    | TokenKind::Fun
+                    | TokenKind::Var
+                    | TokenKind::For
+                    | TokenKind::If
+                    | TokenKind::While
+                    | TokenKind::Print
+                    | TokenKind::Return
+            )
+        ) {
+            return Some(consumed);
+        }
+        consumed += 1;
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod test {
+    use crate::Span;
+
     use super::*;
 
     fn token_sans_context(kind: TokenKind) -> Token {
         Token {
             kind,
-            start_span: (0, 0),
-            end_span: (0, 0),
+            span: Span::default(),
         }
     }
 

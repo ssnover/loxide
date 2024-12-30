@@ -1,5 +1,7 @@
 use std::{iter::Peekable, str::Chars};
 
+use crate::{Position, Span};
+
 pub fn scan_tokens(input: &str) -> Result<Vec<Token>, Vec<ScanError>> {
     let scanner = Scanner::new(input);
     scanner.scan()
@@ -7,8 +9,7 @@ pub fn scan_tokens(input: &str) -> Result<Vec<Token>, Vec<ScanError>> {
 
 struct Scanner<'a> {
     input: Peekable<Chars<'a>>,
-    col: usize,
-    line: usize,
+    pos: Position,
     tokens: Vec<Token>,
     errors: Vec<ScanError>,
 }
@@ -17,8 +18,7 @@ impl<'a> Scanner<'a> {
     pub fn new(input: &str) -> Scanner {
         Scanner {
             input: input.chars().into_iter().peekable(),
-            col: 0,
-            line: 1,
+            pos: Position::new(1, 0),
             tokens: vec![],
             errors: vec![],
         }
@@ -27,20 +27,18 @@ impl<'a> Scanner<'a> {
     fn add_single_ch_token(&mut self, token: TokenKind) {
         self.tokens.push(Token {
             kind: token,
-            start_span: (self.line, self.col),
-            end_span: (self.line, self.col + 1),
+            span: Span::new(self.pos, Position::new(self.pos.line, self.pos.col + 1)),
         });
-        self.col += 1;
+        self.pos.next();
     }
 
     fn add_conditional_token(&mut self, short: TokenKind, long: TokenKind, second_ch: char) {
         if self.input.next_if_eq(&second_ch).is_some() {
             self.tokens.push(Token {
                 kind: long,
-                start_span: (self.line, self.col),
-                end_span: (self.line, self.col + 2),
+                span: Span::new(self.pos, Position::new(self.pos.line, self.pos.col + 2)),
             });
-            self.col += 2;
+            self.pos.forward(2);
         } else {
             self.add_single_ch_token(short);
         }
@@ -49,10 +47,9 @@ impl<'a> Scanner<'a> {
     fn consume_until(&mut self, matching_ch: char) {
         while let Some(ch) = self.input.next() {
             if ch == '\n' {
-                self.col = 0;
-                self.line += 1;
+                self.pos.next_line();
             } else {
-                self.col += 1;
+                self.pos.next();
             }
             if matching_ch == ch {
                 break;
@@ -66,32 +63,28 @@ impl<'a> Scanner<'a> {
 
     fn add_string_literal(&mut self) {
         let mut literal = String::new();
-        let start_line = self.line;
-        let start_col = self.col;
+        let start_pos = self.pos;
         loop {
             match self.input.next() {
                 Some(ch) => {
                     if ch == '\n' {
-                        self.col = 0;
-                        self.line += 1;
+                        self.pos.next_line();
                         literal.push(ch);
                     } else if ch == '"' {
-                        self.col += 1;
+                        self.pos.next();
                         self.tokens.push(Token {
                             kind: TokenKind::String(literal),
-                            start_span: (start_line, start_col),
-                            end_span: (self.line, self.col),
+                            span: Span::new(start_pos, self.pos),
                         });
                         break;
                     } else {
-                        self.col += 1;
+                        self.pos.next();
                         literal.push(ch);
                     }
                 }
                 None => {
                     self.errors.push(ScanError::new(
-                        self.line,
-                        self.col,
+                        self.pos,
                         String::from("Unterminated string literal"),
                     ));
                     break;
@@ -102,13 +95,13 @@ impl<'a> Scanner<'a> {
 
     fn add_numeric_literal(&mut self, ch: char) {
         let mut literal = String::from(ch);
-        let start_line = self.line;
-        let start_col = self.col - 1;
+        let start_pos = self.pos;
+        self.pos.next();
         loop {
             match self.input.peek() {
                 Some(ch) => {
                     if ch.is_digit(10) || *ch == '.' {
-                        self.col += 1;
+                        self.pos.next();
                         literal.push(*ch);
                     } else {
                         break;
@@ -122,13 +115,11 @@ impl<'a> Scanner<'a> {
         if let Ok(num) = literal.parse::<f64>() {
             self.tokens.push(Token {
                 kind: TokenKind::Number(num),
-                start_span: (start_line, start_col),
-                end_span: (self.line, self.col),
+                span: Span::new(start_pos, self.pos),
             });
         } else {
             self.errors.push(ScanError::new(
-                start_line,
-                start_col,
+                start_pos,
                 String::from("Invalid numeric literal"),
             ));
         }
@@ -136,12 +127,12 @@ impl<'a> Scanner<'a> {
 
     fn add_ident(&mut self, ch: char) {
         let mut ident = String::from(ch);
-        let start_col = self.col;
+        let start_pos = self.pos;
         loop {
             match self.input.peek() {
                 Some(ch) => {
                     if ch.is_alphanumeric() || *ch == '_' {
-                        self.col += 1;
+                        self.pos.next();
                         ident.push(*ch);
                     } else {
                         break;
@@ -173,19 +164,16 @@ impl<'a> Scanner<'a> {
         };
         self.tokens.push(Token {
             kind: token,
-            start_span: (self.line, start_col),
-            end_span: (self.line, self.col),
+            span: Span::new(start_pos, self.pos),
         });
     }
 
     pub fn scan(mut self) -> Result<Vec<Token>, Vec<ScanError>> {
         while let Some(ch) = self.input.next() {
             match ch {
-                '\n' => {
-                    let _ = (self.col = 0, self.line += 1);
-                }
+                '\n' => self.pos.next_line(),
                 '\0' => break,
-                ' ' | '\r' | '\t' => self.col += 1,
+                ' ' | '\r' | '\t' => self.pos.next(),
                 '(' => self.add_single_ch_token(TokenKind::LeftParen),
                 ')' => self.add_single_ch_token(TokenKind::RightParen),
                 '{' => self.add_single_ch_token(TokenKind::LeftBrace),
@@ -219,11 +207,10 @@ impl<'a> Scanner<'a> {
                     }
                     // If we get here, we aren't expecting the ch
                     self.errors.push(ScanError::new(
-                        self.line,
-                        self.col,
+                        self.pos,
                         format!("Unexpected character: {ch}"),
                     ));
-                    self.col += 1;
+                    self.pos.next();
                 }
             }
         }
@@ -235,10 +222,7 @@ impl<'a> Scanner<'a> {
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
-    /// The line number and column where the token begins
-    pub start_span: (usize, usize),
-    /// The line number and column where the token ends
-    pub end_span: (usize, usize),
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -296,9 +280,9 @@ pub struct ScanError {
 }
 
 impl ScanError {
-    pub fn new(line: usize, col: usize, error: String) -> Self {
+    pub fn new(pos: Position, error: String) -> Self {
         Self {
-            error_txt: format!("[{line}:{col}] Scan error: {error}"),
+            error_txt: format!("[{}:{}] Scan error: {error}", pos.line, pos.col),
         }
     }
 }

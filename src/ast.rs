@@ -51,18 +51,19 @@ impl TryFrom<&TokenKind> for BinaryOperator {
 
 impl std::fmt::Display for BinaryOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BinaryOperator::Addition => f.write_str("+"),
-            BinaryOperator::Subtraction => f.write_str("-"),
-            BinaryOperator::Multiplication => f.write_str("*"),
-            BinaryOperator::Division => f.write_str("/"),
-            BinaryOperator::Equals => f.write_str("=="),
-            BinaryOperator::NotEquals => f.write_str("!="),
-            BinaryOperator::LessThan => f.write_str("<"),
-            BinaryOperator::LessThanOrEqual => f.write_str("<="),
-            BinaryOperator::GreaterThan => f.write_str(">"),
-            BinaryOperator::GreaterThanOrEqual => f.write_str(">="),
-        }
+        let op_str = match self {
+            BinaryOperator::Addition => "+",
+            BinaryOperator::Subtraction => "-",
+            BinaryOperator::Multiplication => "*",
+            BinaryOperator::Division => "/",
+            BinaryOperator::Equals => "==",
+            BinaryOperator::NotEquals => "!=",
+            BinaryOperator::LessThan => "<",
+            BinaryOperator::LessThanOrEqual => "<=",
+            BinaryOperator::GreaterThan => ">",
+            BinaryOperator::GreaterThanOrEqual => ">=",
+        };
+        f.write_str(op_str)
     }
 }
 
@@ -76,12 +77,19 @@ pub enum ObjectValue {
 
 impl std::fmt::Display for ObjectValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ObjectValue::Nil => f.write_str("nil"),
-            ObjectValue::Number(number) => f.write_str(&number.to_string()),
-            ObjectValue::String(str) => f.write_str(str),
-            ObjectValue::Boolean(val) => f.write_str(if *val { "true" } else { "false" }),
-        }
+        let val_str = match self {
+            ObjectValue::Nil => "nil",
+            ObjectValue::Number(number) => &number.to_string(),
+            ObjectValue::String(str) => str.as_str(),
+            ObjectValue::Boolean(val) => {
+                if *val {
+                    "true"
+                } else {
+                    "false"
+                }
+            }
+        };
+        f.write_str(val_str)
     }
 }
 
