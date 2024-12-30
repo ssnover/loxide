@@ -74,6 +74,18 @@ impl<'a, W: Write> Interpreter<'a, W> {
                     Ok(())
                 }
             }
+            Statement::While(stmt) => {
+                while evaluate(
+                    &stmt.condition,
+                    &mut self.scoped_envs.back().unwrap().borrow_mut(),
+                )?
+                .is_truthy()
+                {
+                    self.execute(&stmt.body)?;
+                }
+
+                Ok(())
+            }
         }
     }
 }

@@ -1,11 +1,13 @@
 use super::{expr::parse_expr, Error};
 use crate::{
-    ast::{IfStatement, Statement},
+    ast::{Expression, IfStatement, ObjectValue, Statement, WhileStatement},
     scanning::{Token, TokenKind},
     token_matches, Span,
 };
 
-pub fn parse_declaration(tokens: &[Token]) -> Result<(usize, Statement), Error> {
+type StmtResult = Result<(usize, Statement), Error>;
+
+pub fn parse_declaration(tokens: &[Token]) -> StmtResult {
     if token_matches!(tokens.get(0), TokenKind::Var) {
         parse_var_declaration(tokens)
     } else {
@@ -13,16 +15,18 @@ pub fn parse_declaration(tokens: &[Token]) -> Result<(usize, Statement), Error> 
     }
 }
 
-pub fn parse_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> {
+pub fn parse_statement(tokens: &[Token]) -> StmtResult {
     match tokens.get(0).map(|token| &token.kind) {
         Some(TokenKind::Print) => parse_print_statement(tokens),
+        Some(TokenKind::While) => parse_while_loop(tokens),
+        Some(TokenKind::For) => parse_for_loop(tokens),
         Some(TokenKind::LeftBrace) => parse_block(tokens),
         Some(TokenKind::If) => parse_if(tokens),
         _ => parse_expr_statement(tokens),
     }
 }
 
-fn parse_print_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> {
+fn parse_print_statement(tokens: &[Token]) -> StmtResult {
     let (consumed, expr) = parse_expr(&tokens[1..])?;
     if token_matches!(tokens.get(consumed + 1), TokenKind::Semicolon) {
         Ok((consumed + 2, Statement::Print(expr)))
@@ -37,7 +41,138 @@ fn parse_print_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> 
     }
 }
 
-fn parse_expr_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> {
+fn parse_while_loop(tokens: &[Token]) -> StmtResult {
+    let mut consumed = 1;
+    if !token_matches!(tokens.get(consumed), TokenKind::LeftParen) {
+        return Err(Error {
+            span: tokens.get(0).unwrap().span.clone(),
+            err: String::from("Expected '(' after while condition"),
+        });
+    }
+    consumed += 1;
+
+    let (expr_consumed, expr) = parse_expr(&tokens[consumed..])?;
+    consumed += expr_consumed;
+
+    if !token_matches!(tokens.get(consumed), TokenKind::RightParen) {
+        return Err(Error {
+            span: Span::bounding(
+                &tokens.get(0).unwrap().span,
+                &tokens.get(consumed - 1).unwrap().span,
+            ),
+            err: String::from("Expected ')' after while condition"),
+        });
+    }
+    consumed += 1;
+
+    let (stmt_consumed, stmt) = parse_statement(&tokens[consumed..])?;
+    consumed += stmt_consumed;
+
+    Ok((
+        consumed,
+        Statement::While(Box::new(WhileStatement {
+            condition: expr,
+            body: stmt,
+        })),
+    ))
+}
+
+fn parse_for_loop(tokens: &[Token]) -> StmtResult {
+    let mut consumed = 1;
+    if !token_matches!(tokens.get(consumed), TokenKind::LeftParen) {
+        return Err(Error {
+            span: tokens.get(0).unwrap().span.clone(),
+            err: String::from("Expected '(' after for statement"),
+        });
+    }
+    consumed += 1;
+
+    let initializer = match tokens.get(consumed).map(|token| &token.kind) {
+        Some(TokenKind::Semicolon) => {
+            consumed += 1;
+            None
+        }
+        Some(TokenKind::Var) => {
+            let (initializer_consumed, initializer) = parse_var_declaration(&tokens[consumed..])?;
+            consumed += initializer_consumed;
+            Some(initializer)
+        }
+        Some(_) => {
+            let (expr_consumed, expr) = parse_expr_statement(&tokens[consumed..])?;
+            consumed += expr_consumed;
+            Some(expr)
+        }
+        _ => {
+            return Err(Error {
+                span: Span::bounding(
+                    &tokens.get(0).unwrap().span,
+                    &tokens.get(consumed - 1).unwrap().span,
+                ),
+                err: String::from("Unexpected end of stream while parsing for loop"),
+            });
+        }
+    };
+
+    let condition = if !token_matches!(tokens.get(consumed), TokenKind::Semicolon) {
+        let (cond_consumed, cond) = parse_expr(&tokens[consumed..])?;
+        consumed += cond_consumed;
+        if !token_matches!(tokens.get(consumed), TokenKind::Semicolon) {
+            return Err(Error {
+                span: Span::bounding(
+                    &tokens.get(0).unwrap().span,
+                    &tokens.get(consumed - 1).unwrap().span,
+                ),
+                err: String::from("Expected ';' after for condition expression"),
+            });
+        }
+        consumed += 1;
+        Some(cond)
+    } else {
+        consumed += 1;
+        None
+    };
+
+    let iteration = if !token_matches!(tokens.get(consumed), TokenKind::RightParen) {
+        let (iter_consumed, iter) = parse_expr(&tokens[consumed..])?;
+        consumed += iter_consumed;
+        if !token_matches!(tokens.get(consumed), TokenKind::RightParen) {
+            return Err(Error {
+                span: Span::bounding(
+                    &tokens.get(0).unwrap().span,
+                    &tokens.get(consumed - 1).unwrap().span,
+                ),
+                err: String::from("Expected ')' after for iteration expression"),
+            });
+        }
+        consumed += 1;
+        Some(iter)
+    } else {
+        consumed += 1;
+        None
+    };
+
+    let (body_consumed, body) = parse_statement(&tokens[consumed..])?;
+    consumed += body_consumed;
+
+    let body = match iteration {
+        Some(iteration) => Statement::Block(vec![body, Statement::Expression(iteration)]),
+        None => body,
+    };
+
+    let while_loop = Statement::While(Box::new(WhileStatement {
+        condition: condition.unwrap_or(Expression::Literal(ObjectValue::Boolean(true))),
+        body,
+    }));
+
+    let for_loop = match initializer {
+        Some(initializer) => Statement::Block(vec![initializer, while_loop]),
+        None => while_loop,
+    };
+
+    Ok((consumed, for_loop))
+}
+
+fn parse_expr_statement(tokens: &[Token]) -> StmtResult {
     let (consumed, expr) = parse_expr(tokens)?;
     if token_matches!(tokens.get(consumed), TokenKind::Semicolon) {
         Ok((consumed + 1, Statement::Expression(expr)))
@@ -52,7 +187,7 @@ fn parse_expr_statement(tokens: &[Token]) -> Result<(usize, Statement), Error> {
     }
 }
 
-fn parse_block(tokens: &[Token]) -> Result<(usize, Statement), Error> {
+fn parse_block(tokens: &[Token]) -> StmtResult {
     let mut consumed = 1; // we assume the first token is left brace
     let mut stmts = vec![];
 
@@ -76,7 +211,7 @@ fn parse_block(tokens: &[Token]) -> Result<(usize, Statement), Error> {
     }
 }
 
-fn parse_if(tokens: &[Token]) -> Result<(usize, Statement), Error> {
+fn parse_if(tokens: &[Token]) -> StmtResult {
     let mut consumed = 1;
     if !token_matches!(tokens.get(consumed), TokenKind::LeftParen) {
         return Err(Error {
@@ -122,7 +257,7 @@ fn parse_if(tokens: &[Token]) -> Result<(usize, Statement), Error> {
     ))
 }
 
-fn parse_var_declaration(tokens: &[Token]) -> Result<(usize, Statement), Error> {
+fn parse_var_declaration(tokens: &[Token]) -> StmtResult {
     let mut consumed = 1;
     if let Some(Token {
         kind: TokenKind::Ident(ident),

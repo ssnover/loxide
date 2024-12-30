@@ -141,4 +141,18 @@ mod test {
         let output_txt = include_str!("../test_scripts/logical_ops.out");
         run_script_and_assert_output(input_src, output_txt);
     }
+
+    #[test]
+    fn test_while_loop() {
+        let input_src = include_str!("../test_scripts/while.lox");
+        let output_txt = include_str!("../test_scripts/while.out");
+        run_script_and_assert_output(input_src, output_txt);
+    }
+
+    #[test]
+    fn test_for_loop() {
+        let input_src = include_str!("../test_scripts/for.lox");
+        let output_txt = include_str!("../test_scripts/for.out");
+        run_script_and_assert_output(input_src, output_txt);
+    }
 }
