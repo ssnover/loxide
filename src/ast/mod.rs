@@ -6,6 +6,9 @@ mod stmt;
 
 pub fn print(expr: &Expression) -> String {
     match expr {
+        Expression::Assignment((name, expr)) => {
+            format!("({name} = {})", print(&expr))
+        }
         Expression::Binary(expr) => {
             format!(
                 "({} {} {})",
@@ -21,6 +24,7 @@ pub fn print(expr: &Expression) -> String {
             format!("({} {})", expr.operator, print(&expr.right))
         }
         Expression::Literal(obj) => format!("{obj}"),
+        Expression::Variable(var) => var.name.clone(),
     }
 }
 

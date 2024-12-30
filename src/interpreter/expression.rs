@@ -1,17 +1,33 @@
 use crate::ast::{BinaryOperator, Expression, UnaryOperator};
 
-use super::{Error, Object};
+use super::{environment::Environment, Error, ErrorKind, Object};
 
-pub fn evaluate(expr: &Expression) -> Result<Object, Error> {
+pub fn evaluate(expr: &Expression, env: &mut Environment) -> Result<Object, Error> {
     match expr {
+        Expression::Assignment((name, expr)) => {
+            let value = evaluate(&expr, env)?;
+            env.assign(name, value.clone())?;
+            Ok(value)
+        }
         Expression::Binary(expr) => perform_binary_op(
             expr.operator.clone(),
-            &evaluate(&expr.left)?,
-            &evaluate(&expr.right)?,
+            &evaluate(&expr.left, env)?,
+            &evaluate(&expr.right, env)?,
         ),
-        Expression::Grouping(expr) => evaluate(&*expr),
-        Expression::Unary(expr) => perform_unary_op(expr.operator.clone(), &evaluate(&expr.right)?),
+        Expression::Grouping(expr) => evaluate(&*expr, env),
+        Expression::Unary(expr) => {
+            perform_unary_op(expr.operator.clone(), &evaluate(&expr.right, env)?)
+        }
         Expression::Literal(val) => Ok(Object::from(val.clone())),
+        Expression::Variable(var) => {
+            if let Some(value) = env.get(&var.name) {
+                Ok(value)
+            } else {
+                Err(Error {
+                    kind: ErrorKind::UndefinedVariable,
+                })
+            }
+        }
     }
 }
 
@@ -34,5 +50,27 @@ fn perform_unary_op(op: UnaryOperator, val: &Object) -> Result<Object, Error> {
     match op {
         UnaryOperator::LogicalNot => val.invert(),
         UnaryOperator::Negation => val.negate(),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::ast::Variable;
+
+    use super::*;
+
+    #[test]
+    fn print_var() {
+        let mut env = Environment::new();
+        env.define("a", Object::Number(5.));
+
+        let res = evaluate(
+            &Expression::Variable(Variable {
+                name: "a".to_string(),
+            }),
+            &mut env,
+        )
+        .unwrap();
+        assert_eq!(Object::Number(5.), res);
     }
 }

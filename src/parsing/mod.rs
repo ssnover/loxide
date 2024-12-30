@@ -1,12 +1,9 @@
 use crate::{
-    ast::{
-        BinaryExpr, BinaryOperator, Expression, ObjectValue, Statement, UnaryExpr, UnaryOperator,
-    },
+    ast::Statement,
     scanning::{Token, TokenKind},
     Span,
 };
-use expr::parse_expr;
-use stmt::parse_statement;
+use stmt::parse_declaration;
 
 mod expr;
 mod stmt;
@@ -25,11 +22,12 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub fn parse(tokens: &[Token]) -> Option<Vec<Statement>> {
+pub fn parse(tokens: &[Token]) -> Result<Vec<Statement>, Vec<Error>> {
     let mut statements = vec![];
+    let mut errors = vec![];
     let mut consumed = 0;
     while consumed < tokens.len() {
-        match parse_statement(&tokens[consumed..]) {
+        match parse_declaration(&tokens[consumed..]) {
             Ok((0, _)) => break,
             Ok((stmt_consumed, stmt)) => {
                 consumed += stmt_consumed;
@@ -37,20 +35,30 @@ pub fn parse(tokens: &[Token]) -> Option<Vec<Statement>> {
             }
             Err(err) => {
                 eprintln!("{err}");
-                break;
+                errors.push(err);
+                let forwarded = synchronize(&tokens[consumed..]);
+                if forwarded == 0 {
+                    break;
+                } else {
+                    consumed += forwarded;
+                }
             }
         }
     }
 
-    Some(statements)
+    if errors.is_empty() {
+        Ok(statements)
+    } else {
+        Err(errors)
+    }
 }
 
-fn synchronize(tokens: &[Token]) -> Option<usize> {
+fn synchronize(tokens: &[Token]) -> usize {
     let mut consumed = 0;
     let mut tokens = tokens.iter().peekable();
     while let Some(token) = tokens.next() {
         if matches!(token.kind, TokenKind::Semicolon) {
-            return Some(consumed);
+            return consumed;
         }
         if matches!(
             tokens.peek().map(|token| &token.kind),
@@ -65,17 +73,17 @@ fn synchronize(tokens: &[Token]) -> Option<usize> {
                     | TokenKind::Return
             )
         ) {
-            return Some(consumed);
+            return consumed;
         }
         consumed += 1;
     }
 
-    None
+    tokens.len()
 }
 
 #[cfg(test)]
 mod test {
-    use crate::Span;
+    use crate::ast::{Expression, ObjectValue};
 
     use super::*;
 
@@ -87,48 +95,27 @@ mod test {
     }
 
     #[test]
-    fn test_arithmetic_precedence() {
+    fn test_var_decl() {
         let tokens = [
-            TokenKind::Number(6.),
-            TokenKind::Slash,
-            TokenKind::Number(3.),
-            TokenKind::Minus,
-            TokenKind::Number(1.),
+            TokenKind::Var,
+            TokenKind::Ident(String::from("value")),
+            TokenKind::Equals,
+            TokenKind::Number(5.),
+            TokenKind::Semicolon,
         ]
         .into_iter()
         .map(token_sans_context)
         .collect::<Vec<_>>();
 
-        let (_, expr) = parse_expr(&tokens).unwrap();
-        let Expression::Binary(expr) = expr else {
-            panic!("Expect binary expression, got {expr:?} instead");
+        let program = parse(&tokens).unwrap();
+        assert_eq!(1, program.len());
+        let stmt = &program[0];
+        let Statement::VarDeclaration((name, Some(initializer))) = stmt else {
+            panic!("Expected variable declaration, got {stmt:?} instead");
         };
-        assert!(matches!(
-            expr.right,
-            Expression::Literal(ObjectValue::Number(1.))
-        ));
-        assert!(matches!(expr.operator, BinaryOperator::Subtraction));
-        let Expression::Binary(expr) = expr.left else {
-            panic!("Expected binary expression, got {expr:?} instead");
+        assert_eq!("value", name.as_str());
+        let Expression::Literal(ObjectValue::Number(5.)) = initializer else {
+            panic!("Expected number initializer, got {initializer:?}");
         };
-        assert!(matches!(
-            expr.right,
-            Expression::Literal(ObjectValue::Number(3.))
-        ));
-        assert!(matches!(expr.operator, BinaryOperator::Division));
-        assert!(matches!(
-            expr.left,
-            Expression::Literal(ObjectValue::Number(6.))
-        ));
-    }
-
-    #[test]
-    fn test_invalid_unary() {
-        let tokens = [TokenKind::Star, TokenKind::Number(1.)]
-            .into_iter()
-            .map(token_sans_context)
-            .collect::<Vec<_>>();
-
-        assert!(parse(&tokens).is_none());
     }
 }

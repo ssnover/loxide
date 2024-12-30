@@ -2,10 +2,12 @@ use crate::scanning::TokenKind;
 
 #[derive(Clone, Debug)]
 pub enum Expression {
+    Assignment((String, Box<Expression>)),
     Binary(Box<BinaryExpr>),
     Grouping(Box<Expression>),
     Literal(ObjectValue),
     Unary(Box<UnaryExpr>),
+    Variable(Variable),
 }
 
 #[derive(Clone, Debug)]
@@ -124,4 +126,9 @@ impl std::fmt::Display for UnaryOperator {
             UnaryOperator::Negation => f.write_str("-"),
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Variable {
+    pub name: String,
 }

@@ -1,5 +1,6 @@
 use crate::ast::ObjectValue;
 
+mod environment;
 pub mod expression;
 pub mod interpreter;
 
@@ -169,6 +170,7 @@ impl From<ObjectValue> for Object {
 #[derive(Clone, Debug)]
 pub enum ErrorKind {
     TypeError,
+    UndefinedVariable,
 }
 
 #[derive(Clone, Debug)]

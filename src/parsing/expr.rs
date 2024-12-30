@@ -1,11 +1,41 @@
 use super::Error;
 use crate::{
-    ast::{BinaryExpr, BinaryOperator, Expression, ObjectValue, UnaryExpr, UnaryOperator},
+    ast::{
+        BinaryExpr, BinaryOperator, Expression, ObjectValue, UnaryExpr, UnaryOperator, Variable,
+    },
     scanning::{Token, TokenKind},
+    Span,
 };
 
 pub fn parse_expr(tokens: &[Token]) -> Result<(usize, Expression), Error> {
-    parse_equality(tokens)
+    parse_assignment(tokens)
+}
+
+fn parse_assignment(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+    let (expr_consumed, expr) = parse_equality(tokens)?;
+
+    if let Some(Token {
+        kind: TokenKind::Equals,
+        ..
+    }) = tokens.get(expr_consumed)
+    {
+        let mut consumed = expr_consumed + 1;
+        let (inner_consumed, value) = parse_assignment(&tokens[consumed..])?;
+        consumed += inner_consumed;
+        if let Expression::Variable(name) = expr {
+            Ok((
+                consumed,
+                Expression::Assignment((name.name, Box::new(value))),
+            ))
+        } else {
+            Err(Error {
+                span: Span::bounding(&tokens[0].span, &tokens[consumed - 1].span),
+                err: String::from("Invalid assignment target."),
+            })
+        }
+    } else {
+        Ok((expr_consumed, expr))
+    }
 }
 
 fn parse_equality(tokens: &[Token]) -> Result<(usize, Expression), Error> {
@@ -122,6 +152,12 @@ fn parse_primary(tokens: &[Token]) -> Result<(usize, Expression), Error> {
         Some(TokenKind::False) => Ok((1, Expression::Literal(ObjectValue::Boolean(false)))),
         Some(TokenKind::True) => Ok((1, Expression::Literal(ObjectValue::Boolean(true)))),
         Some(TokenKind::Nil) => Ok((1, Expression::Literal(ObjectValue::Nil))),
+        Some(TokenKind::Ident(ident_name)) => Ok((
+            1,
+            Expression::Variable(Variable {
+                name: ident_name.clone(),
+            }),
+        )),
         Some(TokenKind::Number(num)) => Ok((1, Expression::Literal(ObjectValue::Number(*num)))),
         Some(TokenKind::String(str)) => {
             Ok((1, Expression::Literal(ObjectValue::String(str.clone()))))
@@ -153,5 +189,65 @@ fn parse_primary(tokens: &[Token]) -> Result<(usize, Expression), Error> {
             err: format!("Expected expression, but reached end of token stream"),
             span: Default::default(),
         }),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::Span;
+
+    use super::*;
+
+    fn token_sans_context(kind: TokenKind) -> Token {
+        Token {
+            kind,
+            span: Span::default(),
+        }
+    }
+
+    #[test]
+    fn test_arithmetic_precedence() {
+        let tokens = [
+            TokenKind::Number(6.),
+            TokenKind::Slash,
+            TokenKind::Number(3.),
+            TokenKind::Minus,
+            TokenKind::Number(1.),
+        ]
+        .into_iter()
+        .map(token_sans_context)
+        .collect::<Vec<_>>();
+
+        let (_, expr) = parse_expr(&tokens).unwrap();
+        let Expression::Binary(expr) = expr else {
+            panic!("Expect binary expression, got {expr:?} instead");
+        };
+        assert!(matches!(
+            expr.right,
+            Expression::Literal(ObjectValue::Number(1.))
+        ));
+        assert!(matches!(expr.operator, BinaryOperator::Subtraction));
+        let Expression::Binary(expr) = expr.left else {
+            panic!("Expected binary expression, got {expr:?} instead");
+        };
+        assert!(matches!(
+            expr.right,
+            Expression::Literal(ObjectValue::Number(3.))
+        ));
+        assert!(matches!(expr.operator, BinaryOperator::Division));
+        assert!(matches!(
+            expr.left,
+            Expression::Literal(ObjectValue::Number(6.))
+        ));
+    }
+
+    #[test]
+    fn test_invalid_unary() {
+        let tokens = [TokenKind::Star, TokenKind::Number(1.)]
+            .into_iter()
+            .map(token_sans_context)
+            .collect::<Vec<_>>();
+
+        assert!(parse_expr(&tokens).is_err());
     }
 }

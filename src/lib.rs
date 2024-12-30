@@ -13,6 +13,13 @@ impl Span {
     pub fn new(start: Position, end: Position) -> Self {
         Self { start, end }
     }
+
+    pub fn bounding(start: &Span, end: &Span) -> Self {
+        Self {
+            start: start.start,
+            end: end.end,
+        }
+    }
 }
 
 impl Default for Span {
