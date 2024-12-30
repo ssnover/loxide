@@ -20,6 +20,14 @@ pub fn print(expr: &Expression) -> String {
         Expression::Grouping(expr) => {
             format!("(group {})", print(&expr))
         }
+        Expression::Logical(expr) => {
+            format!(
+                "({} {} {}",
+                expr.operator,
+                print(&expr.left),
+                print(&expr.right)
+            )
+        }
         Expression::Unary(expr) => {
             format!("({} {})", expr.operator, print(&expr.right))
         }

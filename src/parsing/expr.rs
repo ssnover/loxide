@@ -1,18 +1,21 @@
 use super::Error;
 use crate::{
     ast::{
-        BinaryExpr, BinaryOperator, Expression, ObjectValue, UnaryExpr, UnaryOperator, Variable,
+        BinaryExpr, BinaryOperator, Expression, LogicalExpr, LogicalOperator, ObjectValue,
+        UnaryExpr, UnaryOperator, Variable,
     },
     scanning::{Token, TokenKind},
     token_matches, Span,
 };
 
-pub fn parse_expr(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+type ExprResult = Result<(usize, Expression), Error>;
+
+pub fn parse_expr(tokens: &[Token]) -> ExprResult {
     parse_assignment(tokens)
 }
 
-fn parse_assignment(tokens: &[Token]) -> Result<(usize, Expression), Error> {
-    let (expr_consumed, expr) = parse_equality(tokens)?;
+fn parse_assignment(tokens: &[Token]) -> ExprResult {
+    let (expr_consumed, expr) = parse_or(tokens)?;
 
     if token_matches!(tokens.get(expr_consumed), TokenKind::Equals) {
         let mut consumed = expr_consumed + 1;
@@ -34,7 +37,45 @@ fn parse_assignment(tokens: &[Token]) -> Result<(usize, Expression), Error> {
     }
 }
 
-fn parse_equality(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+fn parse_or(tokens: &[Token]) -> ExprResult {
+    let (mut consumed, mut expr) = parse_and(tokens)?;
+
+    let mut tokens_iter = tokens[consumed..].iter().peekable();
+    while let Some(_) = tokens_iter.next_if(|token| matches!(token.kind, TokenKind::Or)) {
+        consumed += 1;
+        let (right_consumed, right_expr) = parse_and(&tokens[consumed..])?;
+        consumed += right_consumed;
+        expr = Expression::Logical(Box::new(LogicalExpr {
+            left: expr,
+            operator: LogicalOperator::Or,
+            right: right_expr,
+        }));
+        tokens_iter = tokens[consumed..].iter().peekable();
+    }
+
+    Ok((consumed, expr))
+}
+
+fn parse_and(tokens: &[Token]) -> ExprResult {
+    let (mut consumed, mut expr) = parse_equality(tokens)?;
+
+    let mut tokens_iter = tokens[consumed..].iter().peekable();
+    while let Some(_) = tokens_iter.next_if(|token| matches!(token.kind, TokenKind::And)) {
+        consumed += 1;
+        let (right_consumed, right_expr) = parse_equality(&tokens[consumed..])?;
+        consumed += right_consumed;
+        expr = Expression::Logical(Box::new(LogicalExpr {
+            left: expr,
+            operator: LogicalOperator::Or,
+            right: right_expr,
+        }));
+        tokens_iter = tokens[consumed..].iter().peekable();
+    }
+
+    Ok((consumed, expr))
+}
+
+fn parse_equality(tokens: &[Token]) -> ExprResult {
     let (mut consumed, mut expr) = parse_comparison(tokens)?;
 
     let mut tokens_iter = tokens[consumed..].iter().peekable();
@@ -56,7 +97,7 @@ fn parse_equality(tokens: &[Token]) -> Result<(usize, Expression), Error> {
     Ok((consumed, expr))
 }
 
-fn parse_comparison(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+fn parse_comparison(tokens: &[Token]) -> ExprResult {
     let (mut consumed, mut expr) = parse_term(tokens)?;
 
     let mut tokens_iter = tokens[consumed..].iter().peekable();
@@ -81,7 +122,7 @@ fn parse_comparison(tokens: &[Token]) -> Result<(usize, Expression), Error> {
     Ok((consumed, expr))
 }
 
-fn parse_term(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+fn parse_term(tokens: &[Token]) -> ExprResult {
     let (mut consumed, mut expr) = parse_factor(tokens)?;
 
     let mut tokens_iter = tokens[consumed..].iter().peekable();
@@ -103,7 +144,7 @@ fn parse_term(tokens: &[Token]) -> Result<(usize, Expression), Error> {
     Ok((consumed, expr))
 }
 
-fn parse_factor(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+fn parse_factor(tokens: &[Token]) -> ExprResult {
     let (mut consumed, mut expr) = parse_unary(tokens)?;
 
     let mut tokens_iter = tokens[consumed..].iter().peekable();
@@ -125,7 +166,7 @@ fn parse_factor(tokens: &[Token]) -> Result<(usize, Expression), Error> {
     Ok((consumed, expr))
 }
 
-fn parse_unary(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+fn parse_unary(tokens: &[Token]) -> ExprResult {
     if let Some(Token { kind, .. }) = tokens.get(0) {
         if matches!(kind, TokenKind::Minus | TokenKind::Bang) {
             let (right_consumed, right_expr) = parse_unary(&tokens[1..])?;
@@ -143,7 +184,7 @@ fn parse_unary(tokens: &[Token]) -> Result<(usize, Expression), Error> {
     parse_primary(tokens)
 }
 
-fn parse_primary(tokens: &[Token]) -> Result<(usize, Expression), Error> {
+fn parse_primary(tokens: &[Token]) -> ExprResult {
     match tokens.get(0).map(|token| &token.kind) {
         Some(TokenKind::False) => Ok((1, Expression::Literal(ObjectValue::Boolean(false)))),
         Some(TokenKind::True) => Ok((1, Expression::Literal(ObjectValue::Boolean(true)))),

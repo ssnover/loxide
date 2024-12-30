@@ -10,8 +10,8 @@ mod stmt;
 
 #[derive(Debug, Clone)]
 pub struct Error {
-    span: Span,
-    err: String,
+    pub span: Span,
+    pub err: String,
 }
 
 impl std::fmt::Display for Error {
@@ -82,9 +82,9 @@ fn synchronize(tokens: &[Token]) -> usize {
 
 #[macro_export]
 macro_rules! token_matches {
-    ($expr:expr, $kind:path) => {
+    ($expr:expr, $kinds:pat) => {
         match $expr {
-            Some(Token { kind: $kind, .. }) => true,
+            Some(Token { kind: $kinds, .. }) => true,
             _ => false,
         }
     };

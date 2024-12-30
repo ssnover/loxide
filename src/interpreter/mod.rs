@@ -71,11 +71,11 @@ impl Object {
     }
 
     pub fn equals(&self, other: &Object) -> Result<Object, Error> {
-        self.equals_inner(other).map(|val| Object::Boolean(val))
+        self.equals_inner(other).map(Object::from)
     }
 
     pub fn not_equals(&self, other: &Object) -> Result<Object, Error> {
-        self.equals_inner(other).map(|val| Object::Boolean(!val))
+        self.equals_inner(other).map(Object::from)
     }
 
     fn less_than_inner(&self, other: &Object) -> Result<bool, Error> {
@@ -91,7 +91,7 @@ impl Object {
     }
 
     pub fn less_than(&self, other: &Object) -> Result<Object, Error> {
-        self.less_than_inner(other).map(|val| Object::Boolean(val))
+        self.less_than_inner(other).map(Object::from)
     }
 
     pub fn less_than_equal(&self, other: &Object) -> Result<Object, Error> {
@@ -113,8 +113,7 @@ impl Object {
     }
 
     pub fn greater_than(&self, other: &Object) -> Result<Object, Error> {
-        self.greater_than_inner(other)
-            .map(|val| Object::Boolean(val))
+        self.greater_than_inner(other).map(Object::from)
     }
 
     pub fn greater_than_equal(&self, other: &Object) -> Result<Object, Error> {
@@ -127,13 +126,13 @@ impl Object {
         match self {
             Object::Nil => false,
             Object::Boolean(val) => *val,
-            Object::Number(_) => false,
-            Object::String(_) => false,
+            Object::Number(_) => true,
+            Object::String(_) => true,
         }
     }
 
     pub fn invert(&self) -> Result<Object, Error> {
-        Ok(Object::Boolean(!self.is_truthy()))
+        Ok(Object::from(!self.is_truthy()))
     }
 
     pub fn negate(&self) -> Result<Object, Error> {
@@ -152,7 +151,7 @@ impl std::fmt::Display for Object {
             Object::Nil => "nil".fmt(f),
             Object::Boolean(val) => val.fmt(f),
             Object::Number(num) => num.fmt(f),
-            Object::String(str) => str.fmt(f),
+            Object::String(str) => write!(f, "\"{str}\""),
         }
     }
 }
@@ -165,6 +164,12 @@ impl From<ObjectValue> for Object {
             ObjectValue::Number(num) => Object::Number(num),
             ObjectValue::String(str) => Object::String(str),
         }
+    }
+}
+
+impl From<bool> for Object {
+    fn from(value: bool) -> Self {
+        Object::Boolean(value)
     }
 }
 

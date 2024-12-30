@@ -118,7 +118,7 @@ mod test {
         let output_str = vec![];
         let mut writer = std::io::BufWriter::new(output_str);
         interpret_src(input, &mut writer).unwrap();
-        assert_eq!(output.as_bytes(), writer.buffer())
+        assert_eq!(output, std::str::from_utf8(writer.buffer()).unwrap())
     }
 
     #[test]
@@ -132,6 +132,13 @@ mod test {
     fn test_conditions() {
         let input_src = include_str!("../test_scripts/conditions.lox");
         let output_txt = include_str!("../test_scripts/conditions.out");
+        run_script_and_assert_output(input_src, output_txt);
+    }
+
+    #[test]
+    fn test_logical_ops() {
+        let input_src = include_str!("../test_scripts/logical_ops.lox");
+        let output_txt = include_str!("../test_scripts/logical_ops.out");
         run_script_and_assert_output(input_src, output_txt);
     }
 }

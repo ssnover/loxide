@@ -6,6 +6,7 @@ pub enum Expression {
     Binary(Box<BinaryExpr>),
     Grouping(Box<Expression>),
     Literal(ObjectValue),
+    Logical(Box<LogicalExpr>),
     Unary(Box<UnaryExpr>),
     Variable(Variable),
 }
@@ -66,6 +67,41 @@ impl std::fmt::Display for BinaryOperator {
             BinaryOperator::GreaterThanOrEqual => ">=",
         };
         f.write_str(op_str)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LogicalExpr {
+    pub left: Expression,
+    pub operator: LogicalOperator,
+    pub right: Expression,
+}
+
+#[derive(Clone, Debug)]
+pub enum LogicalOperator {
+    And,
+    Or,
+}
+
+impl TryFrom<&TokenKind> for LogicalOperator {
+    type Error = String;
+
+    fn try_from(value: &TokenKind) -> Result<Self, Self::Error> {
+        match value {
+            TokenKind::And => Ok(Self::And),
+            TokenKind::Or => Ok(Self::Or),
+            _ => Err(format!("Unexpected token: {value:?}")),
+        }
+    }
+}
+
+impl std::fmt::Display for LogicalOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let op_str = match self {
+            Self::And => "and",
+            Self::Or => "or",
+        };
+        write!(f, "{op_str}")
     }
 }
 

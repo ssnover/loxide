@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOperator, Expression, UnaryOperator};
+use crate::ast::{BinaryOperator, Expression, LogicalOperator, UnaryOperator};
 
 use super::{environment::Environment, Error, ErrorKind, Object};
 
@@ -15,6 +15,9 @@ pub fn evaluate(expr: &Expression, env: &mut Environment) -> Result<Object, Erro
             &evaluate(&expr.right, env)?,
         ),
         Expression::Grouping(expr) => evaluate(&*expr, env),
+        Expression::Logical(expr) => {
+            perform_logical_op(expr.operator.clone(), &expr.left, &expr.right, env)
+        }
         Expression::Unary(expr) => {
             perform_unary_op(expr.operator.clone(), &evaluate(&expr.right, env)?)
         }
@@ -43,6 +46,32 @@ fn perform_binary_op(op: BinaryOperator, lhs: &Object, rhs: &Object) -> Result<O
         BinaryOperator::LessThanOrEqual => lhs.less_than_equal(rhs),
         BinaryOperator::GreaterThan => lhs.greater_than(rhs),
         BinaryOperator::GreaterThanOrEqual => lhs.greater_than_equal(rhs),
+    }
+}
+
+fn perform_logical_op(
+    op: LogicalOperator,
+    lhs: &Expression,
+    rhs: &Expression,
+    env: &mut Environment,
+) -> Result<Object, Error> {
+    let lhs = evaluate(lhs, env)?;
+
+    match op {
+        LogicalOperator::And => {
+            if lhs.is_truthy() {
+                evaluate(rhs, env)
+            } else {
+                Ok(lhs)
+            }
+        }
+        LogicalOperator::Or => {
+            if lhs.is_truthy() {
+                Ok(lhs)
+            } else {
+                evaluate(rhs, env)
+            }
+        }
     }
 }
 
