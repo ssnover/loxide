@@ -24,6 +24,7 @@ fn parse_statement(tokens: &[Token]) -> StmtResult {
         Some(TokenKind::For) => parse_for_loop(tokens),
         Some(TokenKind::LeftBrace) => parse_block(tokens),
         Some(TokenKind::If) => parse_if(tokens),
+        Some(TokenKind::Return) => parse_return(tokens),
         _ => parse_expr_statement(tokens),
     }
 }
@@ -259,6 +260,30 @@ fn parse_if(tokens: &[Token]) -> StmtResult {
     ))
 }
 
+fn parse_return(tokens: &[Token]) -> StmtResult {
+    let mut consumed = 1;
+    let expr = if !token_matches!(tokens.get(consumed), TokenKind::Semicolon) {
+        let (expr_consumed, expr) = parse_expr(&tokens[consumed..])?;
+        consumed += expr_consumed;
+        Some(expr)
+    } else {
+        None
+    };
+
+    if token_matches!(tokens.get(consumed), TokenKind::Semicolon) {
+        consumed += 1;
+        Ok((consumed, Statement::Return(expr)))
+    } else {
+        Err(Error {
+            span: Span::bounding(
+                &tokens.get(0).unwrap().span,
+                &tokens.get(consumed - 1).unwrap().span,
+            ),
+            err: String::from("Expected ';' after return value"),
+        })
+    }
+}
+
 fn parse_var_declaration(tokens: &[Token]) -> StmtResult {
     let mut consumed = 1;
     if let Some(Token {
@@ -485,7 +510,7 @@ mod test {
 
         let (consumed, stmt) = parse_declaration(&tokens).unwrap();
         assert_eq!(tokens.len(), consumed);
-        let Statement::FnDeclaration(decl) = stmt else {
+        let Statement::FnDeclaration(_decl) = stmt else {
             panic!("Expected FnDeclaration, got {stmt:?}");
         };
     }

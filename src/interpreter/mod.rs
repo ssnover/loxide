@@ -229,6 +229,7 @@ pub enum ErrorKind {
     UndefinedVariable(String),
     NotCallable,
     WrongNumberOfArgs(u8, u8),
+    ReturnValue(Object),
 }
 
 #[derive(Clone, Debug)]

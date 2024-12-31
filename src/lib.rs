@@ -155,4 +155,11 @@ mod test {
         let output_txt = include_str!("../test_scripts/for.out");
         run_script_and_assert_output(input_src, output_txt);
     }
+
+    #[test]
+    fn test_recursive_func_calls() {
+        let input_src = include_str!("../test_scripts/fibn.lox");
+        let output_txt = include_str!("../test_scripts/fibn.out");
+        run_script_and_assert_output(input_src, output_txt);
+    }
 }

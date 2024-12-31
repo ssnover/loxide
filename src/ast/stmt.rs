@@ -9,6 +9,7 @@ pub enum Statement {
     FnDeclaration(FnDeclaration),
     While(Box<WhileStatement>),
     If(Box<IfStatement>),
+    Return(Option<Expression>),
 }
 
 #[derive(Clone, Debug)]

@@ -66,9 +66,7 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 self.scoped_envs
                     .push_back(Rc::new(RefCell::new(Environment::with_parent(env.clone()))));
 
-                let result = stmts
-                    .iter()
-                    .try_for_each(|stmt| self.execute_with_env(stmt, env));
+                let result = stmts.iter().try_for_each(|stmt| self.execute(stmt));
 
                 self.scoped_envs.pop_back();
                 result
@@ -112,15 +110,29 @@ impl<'a, W: Write> Interpreter<'a, W> {
 
                         let env = Rc::new(RefCell::new(env));
                         let stmt = Statement::Block(decl_body);
-                        interpreter.execute_with_env(&stmt, &env)?;
-
-                        Ok(Object::Nil)
+                        match interpreter.execute_with_env(&stmt, &env) {
+                            Ok(()) => Ok(Object::Nil),
+                            Err(Error {
+                                kind: ErrorKind::ReturnValue(value),
+                            }) => Ok(value),
+                            Err(err) => Err(err),
+                        }
                     })),
                 });
 
                 env.borrow_mut().define(decl.name.clone(), func);
 
                 Ok(())
+            }
+            Statement::Return(expr) => {
+                let ret_val = if let Some(expr) = expr {
+                    self.evaluate(expr, env)?
+                } else {
+                    Object::Nil
+                };
+                Err(Error {
+                    kind: ErrorKind::ReturnValue(ret_val),
+                })
             }
         }
     }
