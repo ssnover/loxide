@@ -2,10 +2,9 @@ use crate::ast::ObjectValue;
 use std::rc::Rc;
 
 mod environment;
-pub mod expression;
 pub mod interpreter;
-use environment::Environment;
 pub use interpreter::Interpreter;
+use interpreter::StatementExecutor;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {
@@ -178,7 +177,7 @@ impl From<bool> for Object {
     }
 }
 
-type CallableFn = Box<dyn Fn(&[Object], &mut Environment) -> Result<Object, Error> + Send + Sync>;
+type CallableFn = Box<dyn Fn(&[Object], &mut dyn StatementExecutor) -> Result<Object, Error>>;
 
 #[derive(Clone)]
 pub struct Callable {
@@ -188,13 +187,17 @@ pub struct Callable {
 }
 
 impl Callable {
-    pub fn call(&self, args: &[Object], env: &mut Environment) -> Result<Object, Error> {
+    pub fn call(
+        &self,
+        args: &[Object],
+        interpreter: &mut dyn StatementExecutor,
+    ) -> Result<Object, Error> {
         if self.arity != args.len() {
             return Err(Error {
                 kind: ErrorKind::WrongNumberOfArgs(self.arity as u8, args.len() as u8),
             });
         }
-        (self.function)(args, env)
+        (self.function)(args, interpreter)
     }
 
     pub fn arity(&self) -> usize {
@@ -223,7 +226,7 @@ impl std::fmt::Debug for Callable {
 #[derive(Clone, Debug)]
 pub enum ErrorKind {
     TypeError,
-    UndefinedVariable,
+    UndefinedVariable(String),
     NotCallable,
     WrongNumberOfArgs(u8, u8),
 }

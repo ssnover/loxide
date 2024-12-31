@@ -51,7 +51,7 @@ impl Environment {
             }
             (None, Some(parent)) => parent.borrow_mut().assign(name, value),
             (None, None) => Err(Error {
-                kind: ErrorKind::UndefinedVariable,
+                kind: ErrorKind::UndefinedVariable(name),
             }),
         }
     }

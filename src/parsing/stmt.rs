@@ -1,6 +1,6 @@
 use super::{expr::parse_expr, Error};
 use crate::{
-    ast::{Expression, IfStatement, ObjectValue, Statement, WhileStatement},
+    ast::{Expression, FnDeclaration, IfStatement, ObjectValue, Statement, WhileStatement},
     scanning::{Token, TokenKind},
     token_matches, Span,
 };
@@ -8,14 +8,16 @@ use crate::{
 type StmtResult = Result<(usize, Statement), Error>;
 
 pub fn parse_declaration(tokens: &[Token]) -> StmtResult {
-    if token_matches!(tokens.get(0), TokenKind::Var) {
+    if token_matches!(tokens.get(0), TokenKind::Fun) {
+        parse_fn_declaration(tokens)
+    } else if token_matches!(tokens.get(0), TokenKind::Var) {
         parse_var_declaration(tokens)
     } else {
         parse_statement(tokens)
     }
 }
 
-pub fn parse_statement(tokens: &[Token]) -> StmtResult {
+fn parse_statement(tokens: &[Token]) -> StmtResult {
     match tokens.get(0).map(|token| &token.kind) {
         Some(TokenKind::Print) => parse_print_statement(tokens),
         Some(TokenKind::While) => parse_while_loop(tokens),
@@ -297,6 +299,100 @@ fn parse_var_declaration(tokens: &[Token]) -> StmtResult {
     }
 }
 
+fn parse_fn_declaration(tokens: &[Token]) -> StmtResult {
+    let mut consumed = 1;
+    let Some(Token {
+        kind: TokenKind::Ident(name),
+        ..
+    }) = tokens.get(consumed)
+    else {
+        return Err(Error {
+            span: tokens[0].span.clone(),
+            err: String::from("Expected ident after 'fun'."),
+        });
+    };
+    consumed += 1;
+
+    if token_matches!(tokens.get(consumed), TokenKind::LeftParen) {
+        let left_paren_token = tokens.get(consumed).unwrap();
+        consumed += 1;
+        let mut params = vec![];
+        while !token_matches!(tokens.get(consumed), TokenKind::RightParen) {
+            if params.len() >= 255 {
+                return Err(Error {
+                    span: tokens[1].span.clone(),
+                    err: String::from("Cannot have more than 255 parameters."),
+                });
+            }
+
+            match tokens.get(consumed).map(|token| &token.kind) {
+                Some(TokenKind::Ident(param)) => {
+                    consumed += 1;
+                    params.push(param.clone());
+                }
+                _ => {
+                    return Err(Error {
+                        span: Span::bounding(
+                            &left_paren_token.span,
+                            &tokens.get(consumed - 1).unwrap().span,
+                        ),
+                        err: "Expected ident in parameter list".into(),
+                    });
+                }
+            }
+
+            match tokens.get(consumed).map(|token| &token.kind) {
+                Some(TokenKind::Comma) => {
+                    consumed += 1;
+                }
+                Some(TokenKind::RightParen) => {
+                    // don't consume, we'll do it after the params
+                }
+                Some(_) | None => {
+                    return Err(Error {
+                        span: Span::bounding(
+                            &tokens.get(0).unwrap().span,
+                            &tokens.get(consumed - 1).unwrap().span,
+                        ),
+                        err: String::from(
+                            "Expected ',' or ')' after parameter ident in function declaration.",
+                        ),
+                    });
+                }
+            }
+        }
+
+        consumed += 1; // for the right paren
+
+        if token_matches!(tokens.get(consumed), TokenKind::LeftBrace) {
+            let (body_consumed, body) = parse_block(&tokens[consumed..])?;
+            consumed += body_consumed;
+            let Statement::Block(body) = body else {
+                // The jlox implementation wraps this in another vec but that indirection seems pointless
+                unreachable!();
+            };
+            Ok((
+                consumed,
+                Statement::FnDeclaration(FnDeclaration {
+                    name: name.clone(),
+                    params,
+                    body,
+                }),
+            ))
+        } else {
+            Err(Error {
+                span: tokens.get(consumed - 1).unwrap().span.clone(),
+                err: String::from("Expected '{' after parameter list for function declaration"),
+            })
+        }
+    } else {
+        Err(Error {
+            span: Span::bounding(&tokens[0].span, &tokens[1].span),
+            err: String::from("Expected '(' after function declaration ident"),
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::ast::{Expression, ObjectValue, Variable};
@@ -363,5 +459,34 @@ mod test {
             panic!("Expected function name variable, got {:?}", expr.callee);
         };
         assert_eq!("clock", name.as_str());
+    }
+
+    #[test]
+    fn test_func_decl() {
+        let tokens = [
+            TokenKind::Fun,
+            TokenKind::Ident("add".into()),
+            TokenKind::LeftParen,
+            TokenKind::Ident("a".into()),
+            TokenKind::Comma,
+            TokenKind::Ident("b".into()),
+            TokenKind::RightParen,
+            TokenKind::LeftBrace,
+            TokenKind::Print,
+            TokenKind::Ident("a".into()),
+            TokenKind::Plus,
+            TokenKind::Ident("b".into()),
+            TokenKind::Semicolon,
+            TokenKind::RightBrace,
+        ]
+        .into_iter()
+        .map(token_sans_context)
+        .collect::<Vec<_>>();
+
+        let (consumed, stmt) = parse_declaration(&tokens).unwrap();
+        assert_eq!(tokens.len(), consumed);
+        let Statement::FnDeclaration(decl) = stmt else {
+            panic!("Expected FnDeclaration, got {stmt:?}");
+        };
     }
 }

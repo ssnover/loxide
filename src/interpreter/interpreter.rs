@@ -1,6 +1,16 @@
-use super::{environment::Environment, expression::evaluate, Callable, Error, Object};
-use crate::ast::Statement;
+use super::{environment::Environment, Callable, Error, ErrorKind, Object};
+use crate::ast::{BinaryOperator, Expression, LogicalOperator, Statement, UnaryOperator};
 use std::{cell::RefCell, collections::VecDeque, io::Write, rc::Rc};
+
+pub trait StatementExecutor {
+    fn execute(&mut self, stmt: &Statement) -> Result<(), Error>;
+
+    fn execute_with_env(
+        &mut self,
+        stmt: &Statement,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<(), Error>;
+}
 
 pub struct Interpreter<'a, W> {
     scoped_envs: VecDeque<Rc<RefCell<Environment>>>,
@@ -26,48 +36,45 @@ impl<'a, W: Write> Interpreter<'a, W> {
         Ok(())
     }
 
-    pub fn execute(&mut self, stmt: &Statement) -> Result<(), Error> {
+    pub fn execute_stmt_with_env(
+        &mut self,
+        stmt: &Statement,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<(), Error> {
         match stmt {
             Statement::Expression(expr) => {
-                let _ = evaluate(expr, &mut self.scoped_envs.back().unwrap().borrow_mut())?;
+                let _ = self.evaluate(expr, &env)?;
                 Ok(())
             }
             Statement::Print(expr) => {
-                let value = evaluate(expr, &mut self.scoped_envs.back().unwrap().borrow_mut())?;
+                let value = self.evaluate(expr, &env)?;
                 let _ = writeln!(&mut self.print_writer, "{value}");
                 Ok(())
             }
             Statement::VarDeclaration((name, initializer)) => {
                 let initial_val = if let Some(expr) = initializer {
-                    evaluate(expr, &mut self.scoped_envs.back().unwrap().borrow_mut())?
+                    self.evaluate(expr, &env)?
                 } else {
                     Object::Nil
                 };
 
-                self.scoped_envs
-                    .back()
-                    .unwrap()
-                    .borrow_mut()
-                    .define(name, initial_val);
+                env.borrow_mut().define(name, initial_val);
 
                 Ok(())
             }
             Statement::Block(stmts) => {
                 self.scoped_envs
-                    .push_back(Rc::new(RefCell::new(Environment::with_parent(
-                        self.scoped_envs.back().unwrap().clone(),
-                    ))));
+                    .push_back(Rc::new(RefCell::new(Environment::with_parent(env.clone()))));
 
-                let result = stmts.iter().try_for_each(|stmt| self.execute(stmt));
+                let result = stmts
+                    .iter()
+                    .try_for_each(|stmt| self.execute_with_env(stmt, env));
 
                 self.scoped_envs.pop_back();
                 result
             }
             Statement::If(stmt) => {
-                let condition_result = evaluate(
-                    &stmt.condition,
-                    &mut self.scoped_envs.back().unwrap().borrow_mut(),
-                )?;
+                let condition_result = self.evaluate(&stmt.condition, &env)?;
                 if condition_result.is_truthy() {
                     self.execute(&stmt.then_branch)
                 } else if let Some(else_branch) = &stmt.else_branch {
@@ -77,18 +84,168 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 }
             }
             Statement::While(stmt) => {
-                while evaluate(
-                    &stmt.condition,
-                    &mut self.scoped_envs.back().unwrap().borrow_mut(),
-                )?
-                .is_truthy()
-                {
+                while self.evaluate(&stmt.condition, &env)?.is_truthy() {
                     self.execute(&stmt.body)?;
                 }
 
                 Ok(())
             }
+            Statement::FnDeclaration(decl) => {
+                let decl_params = decl.params.clone();
+                let decl_body = decl.body.clone();
+                let scoped_env = env.clone();
+                let func = Object::Callable(Callable {
+                    name: decl.name.clone(),
+                    arity: decl.params.len(),
+                    function: Rc::new(Box::new(move |args: &[Object], interpreter| {
+                        let scoped_env = scoped_env.clone();
+                        let decl_params = decl_params.clone();
+                        let decl_body = decl_body.clone();
+
+                        let mut env = Environment::with_parent(scoped_env);
+                        decl_params
+                            .into_iter()
+                            .zip(args.iter())
+                            .for_each(|(param, arg)| {
+                                env.define(param, arg.clone());
+                            });
+
+                        let env = Rc::new(RefCell::new(env));
+                        let stmt = Statement::Block(decl_body);
+                        interpreter.execute_with_env(&stmt, &env)?;
+
+                        Ok(Object::Nil)
+                    })),
+                });
+
+                env.borrow_mut().define(decl.name.clone(), func);
+
+                Ok(())
+            }
         }
+    }
+
+    pub fn evaluate(
+        &mut self,
+        expr: &Expression,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Object, Error> {
+        match expr {
+            Expression::Assignment((name, expr)) => {
+                let value = self.evaluate(&expr, env)?;
+                let mut env = self.scoped_envs.back().unwrap().borrow_mut();
+                env.assign(name, value.clone())?;
+                Ok(value)
+            }
+            Expression::Binary(expr) => {
+                let left = self.evaluate(&expr.left, env)?;
+                let right = self.evaluate(&expr.right, env)?;
+                self.perform_binary_op(expr.operator.clone(), &left, &right)
+            }
+            Expression::Call(expr) => {
+                let callee = self.evaluate(&expr.callee, env)?;
+
+                let args = expr
+                    .args
+                    .iter()
+                    .map(|arg| self.evaluate(arg, env))
+                    .collect::<Result<Vec<Object>, Error>>()?;
+
+                let Object::Callable(function) = callee else {
+                    return Err(Error {
+                        kind: ErrorKind::NotCallable,
+                    });
+                };
+                function.call(&args, self)
+            }
+            Expression::Grouping(expr) => self.evaluate(expr, env),
+            Expression::Logical(expr) => {
+                self.perform_logical_op(expr.operator.clone(), &expr.left, &expr.right, env)
+            }
+            Expression::Unary(expr) => {
+                let right = self.evaluate(&expr.right, env)?;
+                self.perform_unary_op(expr.operator.clone(), &right)
+            }
+            Expression::Literal(val) => Ok(Object::from(val.clone())),
+            Expression::Variable(var) => {
+                if let Some(value) = env.borrow().get(&var.name) {
+                    Ok(value)
+                } else {
+                    Err(Error {
+                        kind: ErrorKind::UndefinedVariable(var.name.clone()),
+                    })
+                }
+            }
+        }
+    }
+
+    fn perform_binary_op(
+        &self,
+        op: BinaryOperator,
+        lhs: &Object,
+        rhs: &Object,
+    ) -> Result<Object, Error> {
+        match op {
+            BinaryOperator::Addition => lhs.add(rhs),
+            BinaryOperator::Subtraction => lhs.subtract(rhs),
+            BinaryOperator::Multiplication => lhs.multiply(rhs),
+            BinaryOperator::Division => lhs.divide(rhs),
+            BinaryOperator::Equals => lhs.equals(rhs),
+            BinaryOperator::NotEquals => lhs.not_equals(rhs),
+            BinaryOperator::LessThan => lhs.less_than(rhs),
+            BinaryOperator::LessThanOrEqual => lhs.less_than_equal(rhs),
+            BinaryOperator::GreaterThan => lhs.greater_than(rhs),
+            BinaryOperator::GreaterThanOrEqual => lhs.greater_than_equal(rhs),
+        }
+    }
+
+    fn perform_logical_op(
+        &mut self,
+        op: LogicalOperator,
+        lhs: &Expression,
+        rhs: &Expression,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Object, Error> {
+        let lhs = self.evaluate(lhs, env)?;
+
+        match op {
+            LogicalOperator::And => {
+                if lhs.is_truthy() {
+                    self.evaluate(rhs, env)
+                } else {
+                    Ok(lhs)
+                }
+            }
+            LogicalOperator::Or => {
+                if lhs.is_truthy() {
+                    Ok(lhs)
+                } else {
+                    self.evaluate(rhs, env)
+                }
+            }
+        }
+    }
+
+    fn perform_unary_op(&self, op: UnaryOperator, val: &Object) -> Result<Object, Error> {
+        match op {
+            UnaryOperator::LogicalNot => val.invert(),
+            UnaryOperator::Negation => val.negate(),
+        }
+    }
+}
+
+impl<'a, W: Write> StatementExecutor for Interpreter<'a, W> {
+    fn execute(&mut self, stmt: &Statement) -> Result<(), Error> {
+        let env = self.scoped_envs.back().unwrap();
+        self.execute_stmt_with_env(stmt, &env.clone())
+    }
+
+    fn execute_with_env(
+        &mut self,
+        stmt: &Statement,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<(), Error> {
+        self.execute_stmt_with_env(stmt, env)
     }
 }
 
@@ -98,7 +255,7 @@ fn add_native_functions(env: &mut Environment) {
         Object::Callable(Callable {
             name: String::from("clock"),
             arity: 0,
-            function: Rc::new(Box::new(|_args, _env| {
+            function: Rc::new(Box::new(|_args, _| {
                 let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_millis() as f64 / 1000.;
                 return Ok(Object::Number(now));
             })),
