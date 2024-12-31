@@ -162,4 +162,11 @@ mod test {
         let output_txt = include_str!("../test_scripts/fibn.out");
         run_script_and_assert_output(input_src, output_txt);
     }
+
+    #[test]
+    fn test_closures() {
+        let input_src = include_str!("../test_scripts/counter.lox");
+        let output_txt = include_str!("../test_scripts/counter.out");
+        run_script_and_assert_output(input_src, output_txt);
+    }
 }
