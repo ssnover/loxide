@@ -1,8 +1,10 @@
 use crate::ast::ObjectValue;
+use std::rc::Rc;
 
 mod environment;
 pub mod expression;
 pub mod interpreter;
+use environment::Environment;
 pub use interpreter::Interpreter;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -11,6 +13,7 @@ pub enum Object {
     Number(f64),
     String(String),
     Boolean(bool),
+    Callable(Callable),
 }
 
 impl Object {
@@ -128,6 +131,7 @@ impl Object {
             Object::Boolean(val) => *val,
             Object::Number(_) => true,
             Object::String(_) => true,
+            Object::Callable(_) => true,
         }
     }
 
@@ -152,6 +156,7 @@ impl std::fmt::Display for Object {
             Object::Boolean(val) => val.fmt(f),
             Object::Number(num) => num.fmt(f),
             Object::String(str) => write!(f, "\"{str}\""),
+            Object::Callable(callable) => callable.fmt(f),
         }
     }
 }
@@ -173,10 +178,54 @@ impl From<bool> for Object {
     }
 }
 
+type CallableFn = Box<dyn Fn(&[Object], &mut Environment) -> Result<Object, Error> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct Callable {
+    name: String,
+    arity: usize,
+    function: Rc<CallableFn>,
+}
+
+impl Callable {
+    pub fn call(&self, args: &[Object], env: &mut Environment) -> Result<Object, Error> {
+        if self.arity != args.len() {
+            return Err(Error {
+                kind: ErrorKind::WrongNumberOfArgs(self.arity as u8, args.len() as u8),
+            });
+        }
+        (self.function)(args, env)
+    }
+
+    pub fn arity(&self) -> usize {
+        self.arity
+    }
+}
+
+impl PartialEq for Callable {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+
+impl std::fmt::Display for Callable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<fn {}>", self.name)
+    }
+}
+
+impl std::fmt::Debug for Callable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<fn {}: arity {}>", self.name, self.arity)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum ErrorKind {
     TypeError,
     UndefinedVariable,
+    NotCallable,
+    WrongNumberOfArgs(u8, u8),
 }
 
 #[derive(Clone, Debug)]

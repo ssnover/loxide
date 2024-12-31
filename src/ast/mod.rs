@@ -17,6 +17,16 @@ pub fn print(expr: &Expression) -> String {
                 print(&expr.right)
             )
         }
+        Expression::Call(expr) => {
+            format!(
+                "(call {} {})",
+                print(&expr.callee),
+                expr.args.iter().fold(String::new(), |mut acc, arg| {
+                    acc.push_str(&print(arg));
+                    acc
+                })
+            )
+        }
         Expression::Grouping(expr) => {
             format!("(group {})", print(&expr))
         }

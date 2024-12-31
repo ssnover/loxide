@@ -14,6 +14,22 @@ pub fn evaluate(expr: &Expression, env: &mut Environment) -> Result<Object, Erro
             &evaluate(&expr.left, env)?,
             &evaluate(&expr.right, env)?,
         ),
+        Expression::Call(expr) => {
+            let callee = evaluate(&expr.callee, env)?;
+
+            let args = expr
+                .args
+                .iter()
+                .map(|arg| evaluate(arg, env))
+                .collect::<Result<Vec<Object>, Error>>()?;
+
+            let Object::Callable(function) = callee else {
+                return Err(Error {
+                    kind: ErrorKind::NotCallable,
+                });
+            };
+            function.call(&args, env)
+        }
         Expression::Grouping(expr) => evaluate(&*expr, env),
         Expression::Logical(expr) => {
             perform_logical_op(expr.operator.clone(), &expr.left, &expr.right, env)

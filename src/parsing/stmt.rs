@@ -299,7 +299,7 @@ fn parse_var_declaration(tokens: &[Token]) -> StmtResult {
 
 #[cfg(test)]
 mod test {
-    use crate::ast::{Expression, ObjectValue};
+    use crate::ast::{Expression, ObjectValue, Variable};
 
     use super::*;
 
@@ -332,5 +332,36 @@ mod test {
         let Expression::Literal(ObjectValue::Number(5.)) = initializer else {
             panic!("Expected number initializer, got {initializer:?}");
         };
+    }
+
+    #[test]
+    fn test_var_decl_initialized_by_function_call() {
+        let tokens = [
+            TokenKind::Var,
+            TokenKind::Ident("time".into()),
+            TokenKind::Equals,
+            TokenKind::Ident("clock".into()),
+            TokenKind::LeftParen,
+            TokenKind::RightParen,
+            TokenKind::Semicolon,
+        ]
+        .into_iter()
+        .map(token_sans_context)
+        .collect::<Vec<_>>();
+
+        let (consumed, stmt) = parse_declaration(&tokens).unwrap();
+        assert_eq!(tokens.len(), consumed);
+        let Statement::VarDeclaration((name, Some(expr))) = stmt else {
+            panic!("Expected var declaration with initializer expression, got {stmt:?}");
+        };
+        assert_eq!("time", name.as_str());
+        let Expression::Call(expr) = expr else {
+            panic!("Expected function call expr, got {expr:?}");
+        };
+        assert_eq!(0, expr.args.len());
+        let Expression::Variable(Variable { name }) = expr.callee else {
+            panic!("Expected function name variable, got {:?}", expr.callee);
+        };
+        assert_eq!("clock", name.as_str());
     }
 }

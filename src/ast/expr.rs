@@ -4,6 +4,7 @@ use crate::scanning::TokenKind;
 pub enum Expression {
     Assignment((String, Box<Expression>)),
     Binary(Box<BinaryExpr>),
+    Call(Box<CallExpr>),
     Grouping(Box<Expression>),
     Literal(ObjectValue),
     Logical(Box<LogicalExpr>),
@@ -68,6 +69,12 @@ impl std::fmt::Display for BinaryOperator {
         };
         f.write_str(op_str)
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct CallExpr {
+    pub callee: Expression,
+    pub args: Vec<Expression>,
 }
 
 #[derive(Clone, Debug)]

@@ -1,8 +1,8 @@
 use super::Error;
 use crate::{
     ast::{
-        BinaryExpr, BinaryOperator, Expression, LogicalExpr, LogicalOperator, ObjectValue,
-        UnaryExpr, UnaryOperator, Variable,
+        BinaryExpr, BinaryOperator, CallExpr, Expression, LogicalExpr, LogicalOperator,
+        ObjectValue, UnaryExpr, UnaryOperator, Variable,
     },
     scanning::{Token, TokenKind},
     token_matches, Span,
@@ -181,7 +181,71 @@ fn parse_unary(tokens: &[Token]) -> ExprResult {
         }
     }
 
-    parse_primary(tokens)
+    parse_call(tokens)
+}
+
+fn parse_call(tokens: &[Token]) -> ExprResult {
+    let (mut consumed, mut expr) = parse_primary(tokens)?;
+
+    while token_matches!(tokens.get(consumed), TokenKind::LeftParen) {
+        let left_paren_token = tokens.get(consumed).unwrap();
+        consumed += 1;
+        let mut args = vec![];
+        if !token_matches!(tokens.get(consumed), TokenKind::RightParen) {
+            loop {
+                let (expr_consumed, expr) = parse_expr(&tokens[consumed..])?;
+                args.push(expr);
+
+                if args.len() > 255 {
+                    return Err(Error {
+                        span: Span::bounding(
+                            &tokens.get(consumed).unwrap().span,
+                            &tokens.get(consumed + expr_consumed - 1).unwrap().span,
+                        ),
+                        err: String::from("Cannot have more than 255 arguments to a function"),
+                    });
+                }
+
+                consumed += expr_consumed;
+                match tokens.get(consumed).map(|token| &token.kind) {
+                    Some(TokenKind::RightParen) => {
+                        consumed += 1;
+                        break;
+                    }
+                    Some(TokenKind::Comma) => {
+                        consumed += 1;
+                        continue;
+                    }
+                    Some(token) => {
+                        return Err(Error {
+                            span: Span::bounding(
+                                &left_paren_token.span,
+                                &tokens.get(consumed).unwrap().span,
+                            ),
+                            err: format!("Expected ',' or ')' in call arguments, found {token:?}",),
+                        })
+                    }
+                    None => {
+                        return Err(Error {
+                            span: Span::bounding(
+                                &left_paren_token.span,
+                                &tokens.get(consumed - 1).unwrap().span,
+                            ),
+                            err: String::from(
+                                "Unexpected end of token stream while parsing call arguments",
+                            ),
+                        });
+                    }
+                }
+            }
+        } else {
+            consumed += 1;
+        }
+
+        expr = Expression::Call(Box::new(CallExpr { callee: expr, args }));
+    }
+
+    Ok((consumed, expr))
 }
 
 fn parse_primary(tokens: &[Token]) -> ExprResult {
@@ -231,9 +295,8 @@ fn parse_primary(tokens: &[Token]) -> ExprResult {
 
 #[cfg(test)]
 mod test {
-    use crate::Span;
-
     use super::*;
+    use crate::Span;
 
     fn token_sans_context(kind: TokenKind) -> Token {
         Token {
@@ -286,5 +349,59 @@ mod test {
             .collect::<Vec<_>>();
 
         assert!(parse_expr(&tokens).is_err());
+    }
+
+    #[test]
+    fn test_call() {
+        let tokens = [
+            TokenKind::Ident(String::from("average")),
+            TokenKind::LeftParen,
+            TokenKind::Number(1.),
+            TokenKind::Comma,
+            TokenKind::Number(2.),
+            TokenKind::RightParen,
+        ]
+        .into_iter()
+        .map(token_sans_context)
+        .collect::<Vec<_>>();
+
+        let (consumed, expr) = parse_expr(&tokens).unwrap();
+        assert_eq!(tokens.len(), consumed);
+        let Expression::Call(expr) = expr else {
+            panic!("Expected call expression, got {expr:?}");
+        };
+        assert!(matches!(expr.callee, Expression::Variable(Variable { .. })));
+        assert_eq!(2, expr.args.len());
+        assert!(matches!(
+            expr.args[0],
+            Expression::Literal(ObjectValue::Number(1.))
+        ));
+        assert!(matches!(
+            expr.args[1],
+            Expression::Literal(ObjectValue::Number(2.))
+        ));
+    }
+
+    #[test]
+    fn test_call_no_args() {
+        let tokens = [
+            TokenKind::Ident("test".into()),
+            TokenKind::LeftParen,
+            TokenKind::RightParen,
+        ]
+        .into_iter()
+        .map(token_sans_context)
+        .collect::<Vec<_>>();
+
+        let (consumed, expr) = parse_expr(&tokens).unwrap();
+        assert_eq!(tokens.len(), consumed);
+        let Expression::Call(expr) = expr else {
+            panic!("Expected call expression, got {expr:?}");
+        };
+        assert_eq!(0, expr.args.len());
+        let Expression::Variable(Variable { name }) = expr.callee else {
+            panic!("Expected function name, got {:?}", expr.callee);
+        };
+        assert_eq!("test", name.as_str());
     }
 }

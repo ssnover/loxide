@@ -1,4 +1,4 @@
-use super::{environment::Environment, expression::evaluate, Error, Object};
+use super::{environment::Environment, expression::evaluate, Callable, Error, Object};
 use crate::ast::Statement;
 use std::{cell::RefCell, collections::VecDeque, io::Write, rc::Rc};
 
@@ -10,7 +10,9 @@ pub struct Interpreter<'a, W> {
 impl<'a, W: Write> Interpreter<'a, W> {
     pub fn new(writer: &'a mut W) -> Interpreter<'a, W> {
         let mut envs = VecDeque::new();
-        envs.push_back(Rc::new(RefCell::new(Environment::new())));
+        let mut global_env = Environment::new();
+        add_native_functions(&mut global_env);
+        envs.push_back(Rc::new(RefCell::new(global_env)));
         Interpreter {
             scoped_envs: envs,
             print_writer: writer,
@@ -90,9 +92,23 @@ impl<'a, W: Write> Interpreter<'a, W> {
     }
 }
 
+fn add_native_functions(env: &mut Environment) {
+    env.define(
+        "clock",
+        Object::Callable(Callable {
+            name: String::from("clock"),
+            arity: 0,
+            function: Rc::new(Box::new(|_args, _env| {
+                let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_millis() as f64 / 1000.;
+                return Ok(Object::Number(now));
+            })),
+        }),
+    );
+}
+
 #[cfg(test)]
 mod test {
-    use crate::ast::{Expression, ObjectValue};
+    use crate::ast::{CallExpr, Expression, ObjectValue, Variable};
 
     use super::*;
 
@@ -128,5 +144,54 @@ mod test {
                 .get("test")
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn test_function_call() {
+        let mut stdout = std::io::stdout();
+        let mut interpreter = Interpreter::new(&mut stdout);
+        {
+            let mut env = interpreter.scoped_envs.front_mut().unwrap().borrow_mut();
+            env.define(
+                "test",
+                Object::Callable(Callable {
+                    name: "test".into(),
+                    arity: 1,
+                    function: Rc::new(Box::new(|args: &[Object], _env| {
+                        return Ok(args[0].clone());
+                    })),
+                }),
+            );
+            env.define("test_var", Object::Nil);
+        }
+
+        interpreter
+            .scoped_envs
+            .front()
+            .unwrap()
+            .borrow()
+            .get("test")
+            .unwrap();
+
+        let stmt = Statement::Expression(Expression::Assignment((
+            "test_var".into(),
+            Box::new(Expression::Call(Box::new(CallExpr {
+                callee: Expression::Variable(Variable {
+                    name: "test".into(),
+                }),
+                args: vec![Expression::Literal(ObjectValue::Number(1.))],
+            }))),
+        )));
+
+        interpreter.execute(&stmt).unwrap();
+
+        let value = interpreter
+            .scoped_envs
+            .back()
+            .unwrap()
+            .borrow()
+            .get("test_var")
+            .unwrap();
+        assert!(matches!(value, Object::Number(1.)));
     }
 }
