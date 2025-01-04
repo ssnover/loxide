@@ -5,6 +5,7 @@ mod environment;
 pub mod interpreter;
 pub use interpreter::Interpreter;
 use interpreter::StatementExecutor;
+pub mod resolver;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {

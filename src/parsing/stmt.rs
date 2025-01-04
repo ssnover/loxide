@@ -398,11 +398,11 @@ fn parse_fn_declaration(tokens: &[Token]) -> StmtResult {
             };
             Ok((
                 consumed,
-                Statement::FnDeclaration(FnDeclaration {
+                Statement::FnDeclaration(Box::new(FnDeclaration {
                     name: name.clone(),
                     params,
-                    body,
-                }),
+                    body: Statement::Block(body),
+                })),
             ))
         } else {
             Err(Error {
@@ -480,7 +480,7 @@ mod test {
             panic!("Expected function call expr, got {expr:?}");
         };
         assert_eq!(0, expr.args.len());
-        let Expression::Variable(Variable { name }) = expr.callee else {
+        let Expression::Variable(Variable { name, .. }) = expr.callee else {
             panic!("Expected function name variable, got {:?}", expr.callee);
         };
         assert_eq!("clock", name.as_str());

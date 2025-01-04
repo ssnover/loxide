@@ -42,6 +42,18 @@ impl Environment {
         }
     }
 
+    pub fn get_at(&self, name: impl Into<String>, distance: usize) -> Option<Object> {
+        if distance == 0 {
+            let name = name.into();
+            self.values.get(&name).cloned()
+        } else {
+            self.parent
+                .as_ref()
+                .map(|parent| parent.borrow().get_at(name, distance - 1))
+                .flatten()
+        }
+    }
+
     pub fn assign(&mut self, name: impl Into<String>, value: Object) -> Result<(), Error> {
         let name = name.into();
         match (self.values.get_mut(&name), self.parent.as_ref()) {
@@ -53,6 +65,15 @@ impl Environment {
             (None, None) => Err(Error {
                 kind: ErrorKind::UndefinedVariable(name),
             }),
+        }
+    }
+
+    pub fn find_distance(&self, name: impl Into<String>) -> Option<usize> {
+        let name = name.into();
+        match (self.values.get(&name), self.parent.as_ref()) {
+            (Some(_), _) => Some(0),
+            (None, Some(parent)) => parent.borrow().find_distance(name).map(|dist| dist + 1),
+            (None, None) => None,
         }
     }
 }

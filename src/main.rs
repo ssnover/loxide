@@ -5,7 +5,7 @@ use std::{
 };
 
 use loxide::{
-    interpreter::{self, interpreter::Interpreter},
+    interpreter::{self, interpreter::Interpreter, resolver::resolve},
     parsing, scanning,
 };
 
@@ -75,7 +75,8 @@ fn run_repl() -> Result<(), Box<dyn std::error::Error>> {
             Ok(tokens) => {
                 if !tokens.is_empty() {
                     match loxide::parsing::parse(&tokens) {
-                        Ok(program) => {
+                        Ok(mut program) => {
+                            resolve(&mut program);
                             interpreter.interpret(&program)?;
                         }
                         Err(errs) => {

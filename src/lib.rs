@@ -1,4 +1,4 @@
-use interpreter::Interpreter;
+use interpreter::{resolver::resolve, Interpreter};
 
 pub mod ast;
 pub mod interpreter;
@@ -101,7 +101,8 @@ pub fn interpret_src<W: std::io::Write>(src: &str, writer: &mut W) -> Result<(),
         .and_then(|tokens| {
             parsing::parse(&tokens)
                 .map_err(|errs| errs.into_iter().map(Error::from).collect::<Vec<_>>())
-                .and_then(|program| {
+                .and_then(|mut program| {
+                    resolve(&mut program);
                     let mut interpreter = Interpreter::new(writer);
                     interpreter
                         .interpret(&program)
@@ -167,6 +168,13 @@ mod test {
     fn test_closures() {
         let input_src = include_str!("../test_scripts/counter.lox");
         let output_txt = include_str!("../test_scripts/counter.out");
+        run_script_and_assert_output(input_src, output_txt);
+    }
+
+    #[test]
+    fn test_scope_leak() {
+        let input_src = include_str!("../test_scripts/scope_leak.lox");
+        let output_txt = include_str!("../test_scripts/scope_leak.out");
         run_script_and_assert_output(input_src, output_txt);
     }
 }

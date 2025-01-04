@@ -6,7 +6,7 @@ pub enum Statement {
     Print(Expression),
     Block(Vec<Statement>),
     VarDeclaration((String, Option<Expression>)),
-    FnDeclaration(FnDeclaration),
+    FnDeclaration(Box<FnDeclaration>),
     While(Box<WhileStatement>),
     If(Box<IfStatement>),
     Return(Option<Expression>),
@@ -16,7 +16,7 @@ pub enum Statement {
 pub struct FnDeclaration {
     pub name: String,
     pub params: Vec<String>,
-    pub body: Vec<Statement>,
+    pub body: Statement,
 }
 
 #[derive(Clone, Debug)]

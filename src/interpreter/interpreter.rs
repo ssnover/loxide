@@ -1,5 +1,5 @@
 use super::{environment::Environment, Callable, Error, ErrorKind, Object};
-use crate::ast::{BinaryOperator, Expression, LogicalOperator, Statement, UnaryOperator};
+use crate::ast::{BinaryOperator, Expression, LogicalOperator, Statement, UnaryOperator, Variable};
 use std::{cell::RefCell, collections::VecDeque, io::Write, rc::Rc};
 
 pub trait StatementExecutor {
@@ -109,8 +109,7 @@ impl<'a, W: Write> Interpreter<'a, W> {
                             });
 
                         let env = Rc::new(RefCell::new(env));
-                        let stmt = Statement::Block(decl_body);
-                        match interpreter.execute_with_env(&stmt, &env) {
+                        match interpreter.execute_with_env(&decl_body, &env) {
                             Ok(()) => Ok(Object::Nil),
                             Err(Error {
                                 kind: ErrorKind::ReturnValue(value),
@@ -143,7 +142,7 @@ impl<'a, W: Write> Interpreter<'a, W> {
         env: &Rc<RefCell<Environment>>,
     ) -> Result<Object, Error> {
         match expr {
-            Expression::Assignment((name, expr)) => {
+            Expression::Assignment((Variable { name, .. }, expr)) => {
                 let value = self.evaluate(&expr, env)?;
                 let mut env = self.scoped_envs.back().unwrap().borrow_mut();
                 env.assign(name, value.clone())?;
@@ -180,7 +179,12 @@ impl<'a, W: Write> Interpreter<'a, W> {
             }
             Expression::Literal(val) => Ok(Object::from(val.clone())),
             Expression::Variable(var) => {
-                if let Some(value) = env.borrow().get(&var.name) {
+                let value = if let Some(distance) = var.distance {
+                    env.borrow().get_at(&var.name, distance)
+                } else {
+                    env.borrow().get(&var.name)
+                };
+                if let Some(value) = value {
                     Ok(value)
                 } else {
                     Err(Error {
@@ -343,10 +347,14 @@ mod test {
             .unwrap();
 
         let stmt = Statement::Expression(Expression::Assignment((
-            "test_var".into(),
+            Variable {
+                name: "test_var".into(),
+                distance: None,
+            },
             Box::new(Expression::Call(Box::new(CallExpr {
                 callee: Expression::Variable(Variable {
                     name: "test".into(),
+                    distance: None,
                 }),
                 args: vec![Expression::Literal(ObjectValue::Number(1.))],
             }))),

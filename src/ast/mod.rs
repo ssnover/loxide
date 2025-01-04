@@ -6,7 +6,7 @@ mod stmt;
 
 pub fn print(expr: &Expression) -> String {
     match expr {
-        Expression::Assignment((name, expr)) => {
+        Expression::Assignment((Variable { name, .. }, expr)) => {
             format!("({name} = {})", print(&expr))
         }
         Expression::Binary(expr) => {

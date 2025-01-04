@@ -2,7 +2,7 @@ use crate::scanning::TokenKind;
 
 #[derive(Clone, Debug)]
 pub enum Expression {
-    Assignment((String, Box<Expression>)),
+    Assignment((Variable, Box<Expression>)),
     Binary(Box<BinaryExpr>),
     Call(Box<CallExpr>),
     Grouping(Box<Expression>),
@@ -174,4 +174,5 @@ impl std::fmt::Display for UnaryOperator {
 #[derive(Clone, Debug)]
 pub struct Variable {
     pub name: String,
+    pub distance: Option<usize>,
 }

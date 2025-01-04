@@ -22,10 +22,7 @@ fn parse_assignment(tokens: &[Token]) -> ExprResult {
         let (inner_consumed, value) = parse_assignment(&tokens[consumed..])?;
         consumed += inner_consumed;
         if let Expression::Variable(name) = expr {
-            Ok((
-                consumed,
-                Expression::Assignment((name.name, Box::new(value))),
-            ))
+            Ok((consumed, Expression::Assignment((name, Box::new(value)))))
         } else {
             Err(Error {
                 span: Span::bounding(&tokens[0].span, &tokens[consumed - 1].span),
@@ -257,6 +254,7 @@ fn parse_primary(tokens: &[Token]) -> ExprResult {
             1,
             Expression::Variable(Variable {
                 name: ident_name.clone(),
+                distance: None,
             }),
         )),
         Some(TokenKind::Number(num)) => Ok((1, Expression::Literal(ObjectValue::Number(*num)))),
@@ -399,7 +397,7 @@ mod test {
             panic!("Expected call expression, got {expr:?}");
         };
         assert_eq!(0, expr.args.len());
-        let Expression::Variable(Variable { name }) = expr.callee else {
+        let Expression::Variable(Variable { name, .. }) = expr.callee else {
             panic!("Expected function name, got {:?}", expr.callee);
         };
         assert_eq!("test", name.as_str());
