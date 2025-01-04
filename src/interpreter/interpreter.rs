@@ -1,4 +1,4 @@
-use super::{environment::Environment, Callable, Error, ErrorKind, Object};
+use super::{environment::Environment, Callable, Class, Error, ErrorKind, Object};
 use crate::ast::{BinaryOperator, Expression, LogicalOperator, Statement, UnaryOperator, Variable};
 use std::{cell::RefCell, collections::VecDeque, io::Write, rc::Rc};
 
@@ -132,6 +132,13 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 Err(Error {
                     kind: ErrorKind::ReturnValue(ret_val),
                 })
+            }
+            Statement::ClassDeclaration(decl) => {
+                let class = Object::Class(Class {
+                    name: decl.name.clone(),
+                });
+                env.borrow_mut().define(decl.name.clone(), class);
+                Ok(())
             }
         }
     }

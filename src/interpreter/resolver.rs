@@ -73,6 +73,9 @@ impl Resolver {
                     self.resolve_expr(expr, env);
                 }
             }
+            Statement::ClassDeclaration(decl) => {
+                env.borrow_mut().define(decl.name.clone(), Object::Nil);
+            }
         }
     }
 

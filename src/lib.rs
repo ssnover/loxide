@@ -177,4 +177,11 @@ mod test {
         let output_txt = include_str!("../test_scripts/scope_leak.out");
         run_script_and_assert_output(input_src, output_txt);
     }
+
+    #[test]
+    fn test_class_print() {
+        let input_src = include_str!("../test_scripts/class_print.lox");
+        let output_txt = include_str!("../test_scripts/class_print.out");
+        run_script_and_assert_output(input_src, output_txt);
+    }
 }

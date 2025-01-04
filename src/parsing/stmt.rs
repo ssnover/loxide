@@ -1,6 +1,9 @@
 use super::{expr::parse_expr, Error};
 use crate::{
-    ast::{Expression, FnDeclaration, IfStatement, ObjectValue, Statement, WhileStatement},
+    ast::{
+        ClassDeclaration, Expression, FnDeclaration, IfStatement, ObjectValue, Statement,
+        WhileStatement,
+    },
     scanning::{Token, TokenKind},
     token_matches, Span,
 };
@@ -9,7 +12,11 @@ type StmtResult = Result<(usize, Statement), Error>;
 
 pub fn parse_declaration(tokens: &[Token]) -> StmtResult {
     if token_matches!(tokens.get(0), TokenKind::Fun) {
-        parse_fn_declaration(tokens)
+        // Diverge from the pattern here so that fn declaration parsing can be reused in class parsing
+        let (consumed, fn_decl) = parse_fn_declaration(&tokens[1..])?;
+        Ok((consumed + 1, fn_decl))
+    } else if token_matches!(tokens.get(0), TokenKind::Class) {
+        parse_class_declaration(tokens)
     } else if token_matches!(tokens.get(0), TokenKind::Var) {
         parse_var_declaration(tokens)
     } else {
@@ -325,7 +332,7 @@ fn parse_var_declaration(tokens: &[Token]) -> StmtResult {
 }
 
 fn parse_fn_declaration(tokens: &[Token]) -> StmtResult {
-    let mut consumed = 1;
+    let mut consumed = 0;
     let Some(Token {
         kind: TokenKind::Ident(name),
         ..
@@ -333,7 +340,7 @@ fn parse_fn_declaration(tokens: &[Token]) -> StmtResult {
     else {
         return Err(Error {
             span: tokens[0].span.clone(),
-            err: String::from("Expected ident after 'fun'."),
+            err: String::from("Expected ident in function declaration."),
         });
     };
     consumed += 1;
@@ -414,6 +421,50 @@ fn parse_fn_declaration(tokens: &[Token]) -> StmtResult {
         Err(Error {
             span: Span::bounding(&tokens[0].span, &tokens[1].span),
             err: String::from("Expected '(' after function declaration ident"),
+        })
+    }
+}
+
+fn parse_class_declaration(tokens: &[Token]) -> StmtResult {
+    let mut consumed = 1;
+    let Some(Token {
+        kind: TokenKind::Ident(name),
+        ..
+    }) = tokens.get(consumed)
+    else {
+        return Err(Error {
+            span: tokens[0].span.clone(),
+            err: String::from("Expected ident after 'class'."),
+        });
+    };
+    consumed += 1;
+
+    if token_matches!(tokens.get(consumed), TokenKind::LeftBrace) {
+        consumed += 1;
+        let mut methods = vec![];
+        while !token_matches!(tokens.get(consumed), TokenKind::RightBrace) {
+            let (fn_consumed, fn_decl) = parse_fn_declaration(&tokens[consumed..])?;
+            let Statement::FnDeclaration(fn_decl) = fn_decl else {
+                unreachable!()
+            };
+            consumed += fn_consumed;
+
+            methods.push(*fn_decl);
+        }
+
+        consumed += 1;
+
+        Ok((
+            consumed,
+            Statement::ClassDeclaration(ClassDeclaration {
+                name: name.clone(),
+                methods,
+            }),
+        ))
+    } else {
+        Err(Error {
+            span: tokens.get(consumed - 1).unwrap().span.clone(),
+            err: String::from("Expected '{' after class name."),
         })
     }
 }

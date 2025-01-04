@@ -14,6 +14,7 @@ pub enum Object {
     String(String),
     Boolean(bool),
     Callable(Callable),
+    Class(Class),
 }
 
 impl Object {
@@ -132,6 +133,7 @@ impl Object {
             Object::Number(_) => true,
             Object::String(_) => true,
             Object::Callable(_) => true,
+            Object::Class(_) => true,
         }
     }
 
@@ -157,6 +159,7 @@ impl std::fmt::Display for Object {
             Object::Number(num) => num.fmt(f),
             Object::String(str) => write!(f, "\"{str}\""),
             Object::Callable(callable) => callable.fmt(f),
+            Object::Class(class) => class.name.fmt(f),
         }
     }
 }
@@ -222,6 +225,11 @@ impl std::fmt::Debug for Callable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "<fn {}: arity {}>", self.name, self.arity)
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Class {
+    name: String,
 }
 
 #[derive(Clone, Debug)]
