@@ -134,9 +134,7 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 })
             }
             Statement::ClassDeclaration(decl) => {
-                let class = Object::Class(Class {
-                    name: decl.name.clone(),
-                });
+                let class = Object::Class(Class::new(&decl.name));
                 env.borrow_mut().define(decl.name.clone(), class);
                 Ok(())
             }
@@ -169,16 +167,39 @@ impl<'a, W: Write> Interpreter<'a, W> {
                     .map(|arg| self.evaluate(arg, env))
                     .collect::<Result<Vec<Object>, Error>>()?;
 
-                let Object::Callable(function) = callee else {
-                    return Err(Error {
+                match callee {
+                    Object::Callable(function) => function.call(&args, self),
+                    Object::Class(class) => class.constructor.call(&args, self),
+                    _ => Err(Error {
                         kind: ErrorKind::NotCallable,
-                    });
-                };
-                function.call(&args, self)
+                    }),
+                }
+            }
+            Expression::Get(expr) => {
+                let inst = self.evaluate(&expr.object, env)?;
+                if let Object::Instance(inst) = inst {
+                    inst.get(&expr.property_name)
+                } else {
+                    Err(Error {
+                        kind: ErrorKind::TypeError,
+                    })
+                }
             }
             Expression::Grouping(expr) => self.evaluate(expr, env),
             Expression::Logical(expr) => {
                 self.perform_logical_op(expr.operator.clone(), &expr.left, &expr.right, env)
+            }
+            Expression::Set(expr) => {
+                let value = self.evaluate(&expr.value, env)?;
+                let inst = self.evaluate(&expr.object, env)?;
+                if let Object::Instance(inst) = inst {
+                    inst.set(&expr.property_name, &value);
+                    Ok(value)
+                } else {
+                    Err(Error {
+                        kind: ErrorKind::TypeError,
+                    })
+                }
             }
             Expression::Unary(expr) => {
                 let right = self.evaluate(&expr.right, env)?;

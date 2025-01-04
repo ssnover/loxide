@@ -1,8 +1,8 @@
 use super::Error;
 use crate::{
     ast::{
-        BinaryExpr, BinaryOperator, CallExpr, Expression, LogicalExpr, LogicalOperator,
-        ObjectValue, UnaryExpr, UnaryOperator, Variable,
+        BinaryExpr, BinaryOperator, CallExpr, Expression, GetExpr, LogicalExpr, LogicalOperator,
+        ObjectValue, SetExpr, UnaryExpr, UnaryOperator, Variable,
     },
     scanning::{Token, TokenKind},
     token_matches, Span,
@@ -23,6 +23,15 @@ fn parse_assignment(tokens: &[Token]) -> ExprResult {
         consumed += inner_consumed;
         if let Expression::Variable(name) = expr {
             Ok((consumed, Expression::Assignment((name, Box::new(value)))))
+        } else if let Expression::Get(expr) = expr {
+            Ok((
+                consumed,
+                Expression::Set(Box::new(SetExpr {
+                    object: expr.object,
+                    property_name: expr.property_name,
+                    value,
+                })),
+            ))
         } else {
             Err(Error {
                 span: Span::bounding(&tokens[0].span, &tokens[consumed - 1].span),
@@ -184,65 +193,99 @@ fn parse_unary(tokens: &[Token]) -> ExprResult {
 fn parse_call(tokens: &[Token]) -> ExprResult {
     let (mut consumed, mut expr) = parse_primary(tokens)?;
 
-    while token_matches!(tokens.get(consumed), TokenKind::LeftParen) {
-        let left_paren_token = tokens.get(consumed).unwrap();
-        consumed += 1;
-        let mut args = vec![];
-        if !token_matches!(tokens.get(consumed), TokenKind::RightParen) {
-            loop {
-                let (expr_consumed, expr) = parse_expr(&tokens[consumed..])?;
-                args.push(expr);
-
-                if args.len() > 255 {
-                    return Err(Error {
-                        span: Span::bounding(
-                            &tokens.get(consumed).unwrap().span,
-                            &tokens.get(consumed + expr_consumed - 1).unwrap().span,
-                        ),
-                        err: String::from("Cannot have more than 255 arguments to a function"),
-                    });
-                }
-
-                consumed += expr_consumed;
-                match tokens.get(consumed).map(|token| &token.kind) {
-                    Some(TokenKind::RightParen) => {
-                        consumed += 1;
-                        break;
-                    }
-                    Some(TokenKind::Comma) => {
-                        consumed += 1;
-                        continue;
-                    }
-                    Some(token) => {
-                        return Err(Error {
-                            span: Span::bounding(
-                                &left_paren_token.span,
-                                &tokens.get(consumed).unwrap().span,
-                            ),
-                            err: format!("Expected ',' or ')' in call arguments, found {token:?}",),
-                        })
-                    }
-                    None => {
-                        return Err(Error {
-                            span: Span::bounding(
-                                &left_paren_token.span,
-                                &tokens.get(consumed - 1).unwrap().span,
-                            ),
-                            err: String::from(
-                                "Unexpected end of token stream while parsing call arguments",
-                            ),
-                        });
-                    }
-                }
-            }
-        } else {
-            consumed += 1;
+    while token_matches!(tokens.get(consumed), TokenKind::LeftParen | TokenKind::Dot) {
+        if token_matches!(tokens.get(consumed), TokenKind::LeftParen) {
+            let (args_consumed, args) = parse_parenthesized_arguments(&tokens[consumed..])?;
+            consumed += args_consumed;
+            expr = Expression::Call(Box::new(CallExpr { callee: expr, args }))
+        } else if token_matches!(tokens.get(consumed), TokenKind::Dot) {
+            let (get_consumed, property_name) = parse_property_access(&tokens[consumed..])?;
+            consumed += get_consumed;
+            expr = Expression::Get(Box::new(GetExpr {
+                object: expr,
+                property_name,
+            }))
         }
-
-        expr = Expression::Call(Box::new(CallExpr { callee: expr, args }));
     }
 
     Ok((consumed, expr))
+}
+
+fn parse_parenthesized_arguments(tokens: &[Token]) -> Result<(usize, Vec<Expression>), Error> {
+    let mut consumed = 0;
+    let left_paren_token = tokens.get(consumed).unwrap();
+    consumed += 1;
+    let mut args = vec![];
+    if !token_matches!(tokens.get(consumed), TokenKind::RightParen) {
+        loop {
+            let (expr_consumed, expr) = parse_expr(&tokens[consumed..])?;
+            args.push(expr);
+
+            if args.len() > 255 {
+                return Err(Error {
+                    span: Span::bounding(
+                        &tokens.get(consumed).unwrap().span,
+                        &tokens.get(consumed + expr_consumed - 1).unwrap().span,
+                    ),
+                    err: String::from("Cannot have more than 255 arguments to a function"),
+                });
+            }
+
+            consumed += expr_consumed;
+            match tokens.get(consumed).map(|token| &token.kind) {
+                Some(TokenKind::RightParen) => {
+                    consumed += 1;
+                    break;
+                }
+                Some(TokenKind::Comma) => {
+                    consumed += 1;
+                    continue;
+                }
+                Some(token) => {
+                    return Err(Error {
+                        span: Span::bounding(
+                            &left_paren_token.span,
+                            &tokens.get(consumed).unwrap().span,
+                        ),
+                        err: format!("Expected ',' or ')' in call arguments, found {token:?}",),
+                    })
+                }
+                None => {
+                    return Err(Error {
+                        span: Span::bounding(
+                            &left_paren_token.span,
+                            &tokens.get(consumed - 1).unwrap().span,
+                        ),
+                        err: String::from(
+                            "Unexpected end of token stream while parsing call arguments",
+                        ),
+                    });
+                }
+            }
+        }
+    } else {
+        consumed += 1;
+    }
+
+    Ok((consumed, args))
+}
+
+fn parse_property_access(tokens: &[Token]) -> Result<(usize, String), Error> {
+    let consumed = 1;
+    match tokens.get(consumed) {
+        Some(Token {
+            kind: TokenKind::Ident(name),
+            ..
+        }) => Ok((2, name.clone())),
+        Some(token) => Err(Error {
+            span: token.span.clone(),
+            err: format!("Expected ident, got {token:?}"),
+        }),
+        None => Err(Error {
+            span: tokens[0].span.clone(),
+            err: String::from("Unexpected end of token stream"),
+        }),
+    }
 }
 
 fn parse_primary(tokens: &[Token]) -> ExprResult {

@@ -5,9 +5,11 @@ pub enum Expression {
     Assignment((Variable, Box<Expression>)),
     Binary(Box<BinaryExpr>),
     Call(Box<CallExpr>),
+    Get(Box<GetExpr>),
     Grouping(Box<Expression>),
     Literal(ObjectValue),
     Logical(Box<LogicalExpr>),
+    Set(Box<SetExpr>),
     Unary(Box<UnaryExpr>),
     Variable(Variable),
 }
@@ -78,6 +80,12 @@ pub struct CallExpr {
 }
 
 #[derive(Clone, Debug)]
+pub struct GetExpr {
+    pub object: Expression,
+    pub property_name: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct LogicalExpr {
     pub left: Expression,
     pub operator: LogicalOperator,
@@ -136,6 +144,13 @@ impl std::fmt::Display for ObjectValue {
         };
         f.write_str(val_str)
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct SetExpr {
+    pub object: Expression,
+    pub property_name: String,
+    pub value: Expression,
 }
 
 #[derive(Clone, Debug)]

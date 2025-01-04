@@ -27,6 +27,9 @@ pub fn print(expr: &Expression) -> String {
                 })
             )
         }
+        Expression::Get(expr) => {
+            format!("(get {} {})", expr.property_name, print(&expr.object))
+        }
         Expression::Grouping(expr) => {
             format!("(group {})", print(&expr))
         }
@@ -36,6 +39,14 @@ pub fn print(expr: &Expression) -> String {
                 expr.operator,
                 print(&expr.left),
                 print(&expr.right)
+            )
+        }
+        Expression::Set(expr) => {
+            format!(
+                "(set {}.{} = {})",
+                print(&expr.object),
+                expr.property_name,
+                print(&expr.value)
             )
         }
         Expression::Unary(expr) => {

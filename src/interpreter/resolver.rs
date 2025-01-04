@@ -95,11 +95,16 @@ impl Resolver {
                     .iter_mut()
                     .for_each(|arg| self.resolve_expr(arg, env));
             }
+            Expression::Get(expr) => self.resolve_expr(&mut expr.object, env),
             Expression::Grouping(expr) => self.resolve_expr(expr, env),
             Expression::Literal(_) => {}
             Expression::Logical(expr) => {
                 self.resolve_expr(&mut expr.left, env);
                 self.resolve_expr(&mut expr.right, env);
+            }
+            Expression::Set(expr) => {
+                self.resolve_expr(&mut expr.object, env);
+                self.resolve_expr(&mut expr.value, env);
             }
             Expression::Unary(expr) => self.resolve_expr(&mut expr.right, env),
             Expression::Variable(var) => self.resolve_variable(var, env),

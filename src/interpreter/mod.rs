@@ -2,7 +2,9 @@ use crate::ast::ObjectValue;
 use std::rc::Rc;
 
 mod environment;
+mod instance;
 pub mod interpreter;
+use instance::Instance;
 pub use interpreter::Interpreter;
 use interpreter::StatementExecutor;
 pub mod resolver;
@@ -15,6 +17,7 @@ pub enum Object {
     Boolean(bool),
     Callable(Callable),
     Class(Class),
+    Instance(Instance),
 }
 
 impl Object {
@@ -134,6 +137,7 @@ impl Object {
             Object::String(_) => true,
             Object::Callable(_) => true,
             Object::Class(_) => true,
+            Object::Instance(_) => true,
         }
     }
 
@@ -160,6 +164,7 @@ impl std::fmt::Display for Object {
             Object::String(str) => write!(f, "\"{str}\""),
             Object::Callable(callable) => callable.fmt(f),
             Object::Class(class) => class.name.fmt(f),
+            Object::Instance(instance) => write!(f, "{} instance", instance.class_name()),
         }
     }
 }
@@ -230,6 +235,23 @@ impl std::fmt::Debug for Callable {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Class {
     name: String,
+    constructor: Callable,
+}
+
+impl Class {
+    pub fn new(name: &str) -> Self {
+        let name = String::from(name);
+        Class {
+            name: name.clone(),
+            constructor: Callable {
+                name: name.clone(),
+                arity: 0,
+                function: Rc::new(Box::new(move |_, _| {
+                    Ok(Object::Instance(Instance::new(&name)))
+                })),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -239,6 +261,7 @@ pub enum ErrorKind {
     NotCallable,
     WrongNumberOfArgs(u8, u8),
     ReturnValue(Object),
+    UndefinedProperty(String),
 }
 
 #[derive(Clone, Debug)]
